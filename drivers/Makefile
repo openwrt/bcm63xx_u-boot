@@ -24,13 +24,14 @@ obj-$(CONFIG_$(SPL_TPL_)VIRTIO) += virtio/
 obj-$(CONFIG_$(SPL_)DM_MAILBOX) += mailbox/
 obj-$(CONFIG_$(SPL_)REMOTEPROC) += remoteproc/
 obj-$(CONFIG_$(SPL_TPL_)TPM) += tpm/
+obj-$(CONFIG_$(SPL_TPL_)UBI) += mtd/ubispl/
+obj-$(CONFIG_$(SPL_TPL_)CRYPTO_SUPPORT) += crypto/
 
 ifndef CONFIG_TPL_BUILD
 ifdef CONFIG_SPL_BUILD
 
 obj-$(CONFIG_SPL_BOOTCOUNT_LIMIT) += bootcount/
 obj-$(CONFIG_SPL_CPU_SUPPORT) += cpu/
-obj-$(CONFIG_SPL_CRYPTO_SUPPORT) += crypto/
 obj-$(CONFIG_SPL_MPC8XXX_INIT_DDR_SUPPORT) += ddr/fsl/
 obj-$(CONFIG_ARMADA_38X) += ddr/marvell/a38x/
 obj-$(CONFIG_ARMADA_XP) += ddr/marvell/axp/
@@ -42,7 +43,6 @@ obj-$(CONFIG_SPL_POWER_DOMAIN) += power/domain/
 obj-$(CONFIG_SPL_DM_RESET) += reset/
 obj-$(CONFIG_SPL_MTD_SUPPORT) += mtd/
 obj-$(CONFIG_SPL_ONENAND_SUPPORT) += mtd/onenand/
-obj-$(CONFIG_SPL_UBI) += mtd/ubispl/
 obj-$(CONFIG_SPL_DMA_SUPPORT) += dma/
 obj-$(CONFIG_SPL_ETH_SUPPORT) += net/
 obj-$(CONFIG_SPL_ETH_SUPPORT) += net/phy/
@@ -60,10 +60,12 @@ obj-$(CONFIG_SPL_FPGA_SUPPORT) += fpga/
 obj-$(CONFIG_SPL_THERMAL) += thermal/
 
 endif
+else
+obj-$(CONFIG_HAVE_BLOCK_DEVICE) += block/
 endif
 
 ifdef CONFIG_TPL_BUILD
-
+obj-$(CONFIG_TPL_MTD_SUPPORT) += mtd/
 obj-$(CONFIG_TPL_MPC8XXX_INIT_DDR_SUPPORT) += ddr/fsl/
 
 endif

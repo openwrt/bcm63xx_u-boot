@@ -472,12 +472,38 @@ static int reserve_uboot(void)
 	return 0;
 }
 
+#ifdef CONFIG_SYS_NONCACHED_MEMORY
+static int reserve_noncached(void)
+{
+	/*
+	 * The value of gd->start_addr_sp must match the value of malloc_start
+	 * calculated in boatrd_f.c:initr_malloc(), which is passed to
+	 * board_r.c:mem_malloc_init() and then used by
+	 * cache.c:noncached_init()
+	 *
+	 * These calculations must match the code in cache.c:noncached_init()
+	 */
+	gd->start_addr_sp = ALIGN(gd->start_addr_sp, MMU_SECTION_SIZE) -
+		MMU_SECTION_SIZE;
+	gd->start_addr_sp -= ALIGN(CONFIG_SYS_NONCACHED_MEMORY,
+				   MMU_SECTION_SIZE);
+	debug("Reserving %dM for noncached_alloc() at: %08lx\n",
+	      CONFIG_SYS_NONCACHED_MEMORY >> 20, gd->start_addr_sp);
+
+	return 0;
+}
+#endif
+
 /* reserve memory for malloc() area */
 static int reserve_malloc(void)
 {
 	gd->start_addr_sp = gd->start_addr_sp - TOTAL_MALLOC_LEN;
 	debug("Reserving %dk for malloc() at: %08lx\n",
 	      TOTAL_MALLOC_LEN >> 10, gd->start_addr_sp);
+#ifdef CONFIG_SYS_NONCACHED_MEMORY
+	reserve_noncached();
+#endif
+
 	return 0;
 }
 

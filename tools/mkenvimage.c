@@ -10,6 +10,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -25,6 +26,8 @@
 #include <version.h>
 
 #define CRC_SIZE sizeof(uint32_t)
+#define UBOOT_ENV_MAGIC  (0x75456e76)
+
 
 static void usage(const char *exec_name)
 {
@@ -40,12 +43,23 @@ static void usage(const char *exec_name)
 	       "\tcolumn are treated as comments (also skipped).\n"
 	       "\t-r : the environment has multiple copies in flash\n"
 	       "\t-b : the target is big endian (default is little endian)\n"
+	       "\t--bootmagic : Prepend headers for boot_magic environment\n"
+	       "\t--metadata : Prepend headers for Metadata\n"
 	       "\t-p <byte> : fill the image with <byte> bytes instead of 0xff bytes\n"
 	       "\t-V : print version information and exit\n"
 	       "\n"
 	       "If the input file is \"-\", data is read from standard input\n",
 	       exec_name);
 }
+
+static int bootmagic = 0;
+static int metadata = 0;
+
+static struct option long_opts[] = {
+	{"bootmagic",0,&bootmagic,1},
+	{"metadata",0,&metadata,1},
+	{0,0,0,0},
+};
 
 long int xstrtol(const char *s)
 {
@@ -91,7 +105,7 @@ int main(int argc, char **argv)
 	opterr = 0;
 
 	/* Parse the cmdline */
-	while ((option = getopt(argc, argv, ":s:o:rbp:hV")) != -1) {
+	while ((option = getopt_long(argc, argv, ":s:o:rbp:hV",long_opts,NULL)) != -1) {
 		switch (option) {
 		case 's':
 			datasize = xstrtol(optarg);
@@ -123,6 +137,8 @@ int main(int argc, char **argv)
 				optopt);
 			usage(prg);
 			return EXIT_FAILURE;
+		case 0:
+			break;
 		default:
 			fprintf(stderr, "Wrong option -%c\n", optopt);
 			usage(prg);
@@ -302,6 +318,20 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (bootmagic || metadata) {
+		uint32_t magichdr[2];
+		magichdr[0] = bigendian ? cpu_to_be32(UBOOT_ENV_MAGIC) : cpu_to_le32(UBOOT_ENV_MAGIC);
+		magichdr[1] = bigendian ? cpu_to_be32(datasize) : cpu_to_le32(datasize);
+		if (metadata) {
+			magichdr[0] = magichdr[1]; 
+		}
+		if (write(bin_fd, magichdr, sizeof(magichdr)) !=
+				sizeof(magichdr)) {
+			fprintf(stderr, "write() failed: %s\n", strerror(errno));
+			return EXIT_FAILURE;
+		}
+	}
+	
 	if (write(bin_fd, dataptr, sizeof(*dataptr) * datasize) !=
 			sizeof(*dataptr) * datasize) {
 		fprintf(stderr, "write() failed: %s\n", strerror(errno));

@@ -11,6 +11,7 @@
 #define __LINUX_MTD_NAND_H
 
 #include <linux/mtd/mtd.h>
+#include <linux/bitops.h>
 
 /**
  * struct nand_memory_organization - Memory organization structure

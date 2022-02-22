@@ -17,6 +17,10 @@ ifdef CONFIG_SPL_BUILD
 obj-$(CONFIG_SPL_MMC_BOOT) += fsl_esdhc_spl.o
 endif
 
+ifdef CONFIG_SPL_BUILD
+obj-$(CONFIG_MMC_SDHCI_BCMBCA) += bcmbca_sdhci_spl.o
+endif
+
 obj-$(CONFIG_ARM_PL180_MMCI) += arm_pl180_mmci.o
 obj-$(CONFIG_MMC_DAVINCI)		+= davinci_mmc.o
 obj-$(CONFIG_MMC_DW)			+= dw_mmc.o
@@ -48,6 +52,7 @@ obj-$(CONFIG_MMC_SDHCI)			+= sdhci.o
 obj-$(CONFIG_MMC_SDHCI_ATMEL)		+= atmel_sdhci.o
 obj-$(CONFIG_MMC_SDHCI_BCM2835)		+= bcm2835_sdhci.o
 obj-$(CONFIG_MMC_SDHCI_BCMSTB)		+= bcmstb_sdhci.o
+obj-$(CONFIG_MMC_SDHCI_BCMBCA)		+= bcmbca_sdhci.o
 obj-$(CONFIG_MMC_SDHCI_CADENCE)		+= sdhci-cadence.o
 obj-$(CONFIG_MMC_SDHCI_K3_ARASAN)	+= k3_arsan_sdhci.o
 obj-$(CONFIG_MMC_SDHCI_KONA)		+= kona_sdhci.o

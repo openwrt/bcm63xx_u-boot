@@ -23,6 +23,26 @@ __weak void arm_init_domains(void)
 {
 }
 
+#ifdef CONFIG_ARMV7_LPAE
+void set_section_attr(int section, u64 virt, u64 attr)
+#else
+void set_section_attr(int section, u32 virt, u32 attr)
+#endif
+{
+#ifdef CONFIG_ARMV7_LPAE
+	u64 *page_table = (u64 *)gd->arch.tlb_addr;
+	u64 value = virt;
+#else
+	u32 *page_table = (u32 *)gd->arch.tlb_addr;
+	u32 value = virt;
+#endif
+	/* Add page attribute bits */
+	value |= attr;
+
+	/* Set PTE */
+	page_table[section] = value;
+}
+
 void set_section_dcache(int section, enum dcache_option option)
 {
 #ifdef CONFIG_ARMV7_LPAE

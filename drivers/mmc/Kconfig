@@ -44,6 +44,17 @@ config SPL_DM_MMC
 	  appear as block devices in U-Boot and can support filesystems such
 	  as EXT4 and FAT.
 
+config TPL_DM_MMC
+	bool "Enable MMC controllers using Driver Model in TPL"
+	depends on SPL_DM && DM_MMC
+	default y
+	help
+	  This enables the MultiMediaCard (MMC) uclass which supports MMC and
+	  Secure Digital I/O (SDIO) cards. Both removable (SD, micro-SD, etc.)
+	  and non-removable (e.g. eMMC chip) devices are supported. These
+	  appear as block devices in U-Boot and can support filesystems such
+	  as EXT4 and FAT.
+
 if MMC
 
 config ARM_PL180_MMCI
@@ -437,6 +448,17 @@ config MMC_SDHCI_BCMSTB
 	  This selects the Broadcom set-top box SD/MMC controller.
 
 	  If you have a BCMSTB platform with SD or MMC devices,
+	  say Y here.
+
+	  If unsure, say N.
+
+config MMC_SDHCI_BCMBCA
+	tristate "SDHCI support for the BCMBCA SD/MMC Controller"
+	depends on MMC_SDHCI
+	help
+	  This selects the Broadcom set-top box SD/MMC controller.
+
+	  If you have a BCMBCA platform with SD or MMC devices,
 	  say Y here.
 
 	  If unsure, say N.

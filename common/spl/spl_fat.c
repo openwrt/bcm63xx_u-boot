@@ -80,7 +80,7 @@ int spl_load_image_fat(struct spl_image_info *spl_image,
 			return err;
 		if (err == 0)
 			err = 1;
-	} else if (IS_ENABLED(CONFIG_SPL_LOAD_FIT) &&
+	} else if (CONFIG_IS_ENABLED(LOAD_FIT) &&
 	    image_get_magic(header) == FDT_MAGIC) {
 		struct spl_load_info load;
 

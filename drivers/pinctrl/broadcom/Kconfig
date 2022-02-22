@@ -13,3 +13,11 @@ config PINCTRL_BCM6838
 	help
 	   Support pin multiplexing and pin configuration control on
 	   Broadcom's 6838 family of SoCs.
+
+config PINCTRL_BCMBCA
+	depends on ARCH_BCMBCA && PINCTRL_FULL && OF_CONTROL
+	default n
+	bool "Broadcom BCA pin control driver"
+	help
+	   Support pin multiplexing and pin configuration control on
+	   Broadcom's BCA SOCs.

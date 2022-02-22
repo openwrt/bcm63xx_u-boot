@@ -77,6 +77,9 @@ static enum env_location env_locations[] = {
 #ifdef CONFIG_ENV_IS_IN_SPI_FLASH
 	ENVL_SPI_FLASH,
 #endif
+#ifdef CONFIG_ENV_IS_IN_BOOT_MAGIC
+	ENVL_BOOT_MAGIC,
+#endif
 #ifdef CONFIG_ENV_IS_IN_UBI
 	ENVL_UBI,
 #endif

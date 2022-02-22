@@ -10,8 +10,6 @@ obj-$(CONFIG_BCM6348_ETH) += bcm6348-eth.o
 obj-$(CONFIG_BCM6368_ETH) += bcm6368-eth.o
 obj-$(CONFIG_DRIVER_AT91EMAC) += at91_emac.o
 obj-$(CONFIG_DRIVER_AX88180) += ax88180.o
-obj-$(CONFIG_BCM_SF2_ETH) += bcm-sf2-eth.o
-obj-$(CONFIG_BCM_SF2_ETH_GMAC) += bcm-sf2-eth-gmac.o
 obj-$(CONFIG_CALXEDA_XGMAC) += calxedaxgmac.o
 obj-$(CONFIG_CS8900) += cs8900.o
 obj-$(CONFIG_TULIP) += dc2114x.o
@@ -77,3 +75,5 @@ obj-y += ti/
 obj-$(CONFIG_MEDIATEK_ETH) += mtk_eth.o
 obj-y += mscc_eswitch/
 obj-$(CONFIG_HIGMACV300_ETH) += higmacv300.o
+obj-$(CONFIG_ARCH_BCMBCA) += bcmbca/
+

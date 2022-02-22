@@ -7,7 +7,7 @@ config ENV_IS_NOWHERE
 		     !ENV_IS_IN_MMC && !ENV_IS_IN_NAND && \
 		     !ENV_IS_IN_NVRAM && !ENV_IS_IN_ONENAND && \
 		     !ENV_IS_IN_REMOTE && !ENV_IS_IN_SPI_FLASH && \
-		     !ENV_IS_IN_UBI
+		     !ENV_IS_IN_UBI && !ENV_IS_IN_BOOT_MAGIC
 	help
 	  Define this if you don't want to or can't have an environment stored
 	  on a storage medium. In this case the environment will still exist
@@ -369,6 +369,12 @@ config ENV_SPI_MODE
 	help
 	  Value of the SPI work mode for environment.
 	  See include/spi.h for value.
+
+config ENV_IS_IN_BOOT_MAGIC
+	bool "Environment in the boot device preceded by magic number and length"
+	help
+	  Boot device will be any MTD device for now
+
 
 config ENV_IS_IN_UBI
 	bool "Environment in a UBI volume"

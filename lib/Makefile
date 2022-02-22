@@ -117,4 +117,8 @@ else
 obj-y += vsprintf.o strto.o strmhz.o
 endif
 
+#ifdef CONFIG_TPL_BUILD
+obj-$(CONFIG_AES) += aes.o
+#endif
+
 subdir-ccflags-$(CONFIG_CC_OPTIMIZE_LIBS_FOR_SPEED) += -O2

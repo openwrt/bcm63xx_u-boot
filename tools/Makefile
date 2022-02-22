@@ -50,6 +50,12 @@ HOSTCFLAGS_img2srec.o := -pedantic
 hostprogs-$(CONFIG_XWAY_SWAP_BYTES) += xway-swap-bytes
 HOSTCFLAGS_xway-swap-bytes.o := -pedantic
 
+hostprogs-y += passwd_gen
+passwd_gen-objs := passwd_gen.o lib/sha256.o 
+
+hostprogs-y += swapenvimage
+swapenvimage-objs := swapenvimage.o os_support.o lib/crc32.o
+
 hostprogs-y += mkenvimage
 mkenvimage-objs := mkenvimage.o os_support.o lib/crc32.o
 

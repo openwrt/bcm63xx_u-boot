@@ -120,7 +120,7 @@ static int spl_spi_load_image(struct spl_image_info *spl_image,
 				return err;
 			err = spl_parse_image_header(spl_image,
 					(struct image_header *)CONFIG_SYS_LOAD_ADDR);
-		} else if (IS_ENABLED(CONFIG_SPL_LOAD_FIT) &&
+		} else if (CONFIG_IS_ENABLED(LOAD_FIT) &&
 			   image_get_magic(header) == FDT_MAGIC) {
 			struct spl_load_info load;
 

@@ -171,6 +171,11 @@ static int ubi_create_vol(char *volume, int64_t size, int dynamic, int vol_id)
 	}
 	printf("Creating %s volume %s of size %lld\n",
 		dynamic ? "dynamic" : "static", volume, size);
+
+#ifdef CONFIG_SYS_NMRP
+    if (!strncmp("rootfs", volume, 6))
+        SendNmrpAlive();
+#endif
 	/* Call real ubi create volume */
 	return ubi_create_volume(ubi, &req);
 }

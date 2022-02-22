@@ -190,7 +190,8 @@ int padding_pss_verify(struct image_sign_info *info,
 	uint8_t *db_mask = NULL;
 	int db_mask_len = masked_db_len;
 	uint8_t *db = NULL, *salt = NULL;
-	int db_len = masked_db_len, salt_len = msg_len - hash_len - 2;
+	int db_len = masked_db_len, 
+		salt_len = SHA256_SUM_LEN;
 	uint8_t pad_zero[8] = { 0 };
 	int ret, i, leftmost_bits = 1;
 	uint8_t leftmost_mask;
@@ -219,7 +220,7 @@ int padding_pss_verify(struct image_sign_info *info,
 	/* step 5 */
 	memcpy(masked_db, msg, masked_db_len);
 	memcpy(h, msg + masked_db_len, h_len);
-
+	
 	/* step 6 */
 	leftmost_mask = (0xff >> (8 - leftmost_bits)) << (8 - leftmost_bits);
 	if (masked_db[0] & leftmost_mask) {
@@ -231,16 +232,16 @@ int padding_pss_verify(struct image_sign_info *info,
 
 	/* step 7 */
 	mask_generation_function1(checksum, h, h_len, db_mask, db_mask_len);
-
+	
 	/* step 8 */
 	for (i = 0; i < db_len; i++)
 		db[i] = masked_db[i] ^ db_mask[i];
-
+	
 	/* step 9 */
-	db[0] &= 0xff >> leftmost_bits;
+	db[db_len - (salt_len+1)] &= 0xff >> leftmost_bits;
 
 	/* step 10 */
-	if (db[0] != 0x01) {
+	if (db[db_len-(salt_len+1)] != 0x01) {
 		printf("%s: invalid pss padding ", __func__);
 		printf("(leftmost byte of db isn't 0x01)\n");
 		ret = EINVAL;
@@ -248,13 +249,13 @@ int padding_pss_verify(struct image_sign_info *info,
 	}
 
 	/* step 11 */
-	memcpy(salt, &db[1], salt_len);
+	memcpy(salt, &db[db_len-salt_len], salt_len);
 
 	/* step 12 & 13 */
 	compute_hash_prime(checksum, pad_zero, 8,
 			   (uint8_t *)hash, hash_len,
 			   salt, salt_len, hprime);
-
+	
 	/* step 14 */
 	ret = memcmp(h, hprime, hash_len);
 

@@ -20,6 +20,8 @@ static const char   tab_seq[] = "        ";	/* used to expand TABs */
 
 char console_buffer[CONFIG_SYS_CBSIZE + 1];	/* console I/O buffer	*/
 
+void (*cli_jobs_cb)(void) = NULL;
+
 static char *delete_char (char *buffer, char *p, int *colp, int *np, int plen)
 {
 	char *s;
@@ -269,6 +271,15 @@ static int cread_line(const char *const prompt, char *buf, unsigned int *len,
 				WATCHDOG_RESET();
 			}
 			first = 0;
+		}       
+
+		if(cli_jobs_cb)
+		{
+			while(!tstc())
+			{	
+				cli_jobs_cb();
+				WATCHDOG_RESET();
+			}
 		}
 
 		ichar = getcmd_getch();

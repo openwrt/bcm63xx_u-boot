@@ -109,6 +109,9 @@
 #endif
 #include "link_local.h"
 #include "nfs.h"
+#if defined(CONFIG_SYS_NMRP)
+#include "nmrp.h"
+#endif
 #include "ping.h"
 #include "rarp.h"
 #if defined(CONFIG_CMD_SNTP)
@@ -177,6 +180,20 @@ u32 net_boot_file_size;
 /* Boot file size in blocks as reported by the DHCP server */
 u32 net_boot_file_expected_size_in_blocks;
 
+#ifdef FIRMWARE_RECOVER_FROM_TFTP_SERVER
+uchar NetOurTftpIP[4] = { 192, 168, 1, 1 };
+int NetRunTftpServer = 0;
+uchar TftpClientEther[6] = { 0, 0, 0, 0, 0, 0};
+//extern int read_board_data(uchar *board_data)
+struct in_addr TftpClientIP;
+#ifdef DNI_NAND
+#include <nand.h>
+#else
+extern flash_info_t flash_info[];
+#endif
+#endif
+#include <dni_common.h>
+
 #if defined(CONFIG_CMD_SNTP)
 /* NTP server IP address */
 struct in_addr	net_ntp_server;
@@ -209,6 +226,8 @@ static int net_check_prereq(enum proto_t protocol);
 static int net_try_count;
 
 int __maybe_unused net_busy_flag;
+
+int (*ip_tap)(uchar *in_packet, int len, struct ip_udp_hdr *ip) = NULL;
 
 /**********************************************************************/
 
@@ -454,8 +473,28 @@ restart:
 		case TFTPPUT:
 #endif
 			/* always use ARP to get server ethernet address */
+#ifdef FIRMWARE_RECOVER_FROM_TFTP_SERVER
+			if(NetRunTftpServer)
+			{
+#ifdef CONFIG_SYS_NMRP
+				if (NmrpState != 0) {
+					net_server_ip.s_addr = 1;
+					memcpy(&(net_ip.s_addr), NetOurTftpIP,4);
+					net_gateway.s_addr = 0;
+				}
+#endif
+				TftpServerStart();
+			}
+			else
+#endif
 			tftp_start(protocol);
 			break;
+#ifdef CONFIG_SYS_NMRP
+		case NMRP:
+			NmrpStart();
+			break;
+#endif
+
 #ifdef CONFIG_CMD_TFTPSRV
 		case TFTPSRV:
 			tftp_start_server();
@@ -555,6 +594,7 @@ restart:
 	 *	Main packet reception loop.  Loop receiving packets until
 	 *	someone sets `net_state' to a state that terminates.
 	 */
+skip_netloop:
 	for (;;) {
 		WATCHDOG_RESET();
 #ifdef CONFIG_SHOW_ACTIVITY
@@ -630,6 +670,10 @@ restart:
 			goto restart;
 
 		case NETLOOP_SUCCESS:
+#ifdef CONFIG_SYS_NMRP
+			if (NmrpState == STATE_CLOSING)
+				goto skip_netloop;
+#endif
 			net_cleanup_loop();
 			if (net_boot_file_size > 0) {
 				printf("Bytes transferred = %d (%x hex)\n",
@@ -1075,6 +1119,7 @@ void net_process_received_packet(uchar *in_packet, int len)
 	struct ip_udp_hdr *ip;
 	struct in_addr dst_ip;
 	struct in_addr src_ip;
+	struct in_addr zero_ip;
 	int eth_proto;
 #if defined(CONFIG_CMD_CDP)
 	int iscdp;
@@ -1171,18 +1216,44 @@ void net_process_received_packet(uchar *in_packet, int len)
 	}
 
 	switch (eth_proto) {
+
+#ifdef CONFIG_SYS_NMRP
+		case PROT_NMRP:
+			if(len <= MIN_ETHER_NMRP_LEN){
+				printf("bad packet len@!\n");
+				return;
+			}
+			memcpy(NmrpServerEther,et->et_src,6);
+            zero_ip.s_addr = 0;
+			(*udp_packet_handler)((uchar *)ip, 0, zero_ip, 0, PROT_NMRP);
+			break;
+#endif
 	case PROT_ARP:
 		arp_receive(et, ip, len);
 		break;
 
 #ifdef CONFIG_CMD_RARP
 	case PROT_RARP:
+
+#ifdef FIRMWARE_RECOVER_FROM_TFTP_SERVER
+		if(NetRunTftpServer == 1 )
+		{
+			debug("Got RARP\n");
+			return;
+		}
+#endif
 		rarp_receive(ip, len);
 		break;
 #endif
 	case PROT_IP:
 		debug_cond(DEBUG_NET_PKT, "Got IP\n");
-		/* Before we start poking the header, make sure it is there */
+
+		if(ip_tap)
+		{
+			if(ip_tap(net_rx_packet, net_rx_packet_len, ip))
+				return;
+		}
+        /* Before we start poking the header, make sure it is there */
 		if (len < IP_UDP_HDR_SIZE) {
 			debug("len bad %d < %lu\n", len,
 			      (ulong)IP_UDP_HDR_SIZE);
@@ -1212,10 +1283,17 @@ void net_process_received_packet(uchar *in_packet, int len)
 		dst_ip = net_read_ip(&ip->ip_dst);
 		if (net_ip.s_addr && dst_ip.s_addr != net_ip.s_addr &&
 		    dst_ip.s_addr != 0xFFFFFFFF) {
+#ifdef CONFIG_MCAST_TFTP
+			if (net_mcast_addr != dst_ip)
+#endif
 				return;
 		}
 		/* Read source IP address for later use */
 		src_ip = net_read_ip(&ip->ip_src);
+#ifdef FIRMWARE_RECOVER_FROM_TFTP_SERVER
+		/* Saved the Client IP address anyway for future use */
+		TftpClientIP = net_read_ip(&ip->ip_src);
+#endif
 		/*
 		 * The function returns the unchanged packet if it's not
 		 * a fragment, and either the complete packet or NULL if
@@ -1251,6 +1329,9 @@ void net_process_received_packet(uchar *in_packet, int len)
 		} else if (ip->ip_p != IPPROTO_UDP) {	/* Only UDP packets */
 			return;
 		}
+
+		if (ntohs(ip->udp_len) < UDP_HDR_SIZE || ntohs(ip->udp_len) > ntohs(ip->ip_len))
+			return;
 
 		debug_cond(DEBUG_DEV_PKT,
 			   "received UDP (to=%pI4, from=%pI4, len=%d)\n",
@@ -1613,3 +1694,651 @@ ushort env_get_vlan(char *var)
 {
 	return string_to_vlan(env_get(var));
 }
+
+#ifdef FIRMWARE_RECOVER_FROM_TFTP_SERVER
+extern int flash_sect_erase (ulong, ulong);
+
+void SendNmrpAlive(void)
+{
+    if (NmrpState == STATE_KEEP_ALIVE) 
+        NmrpSend();
+}
+
+/* Check if Alive-timer expires? */
+void CheckNmrpAliveTimerExpire(int send_nmrp_alive)
+{
+	ulong passed;
+
+	passed = get_timer(NmrpAliveTimerStart);
+	if ((passed / CONFIG_SYS_HZ) + NmrpAliveTimerBase > NMRP_TIMEOUT_ACTIVE) {
+		printf("Active-timer expires\n");
+		if (send_nmrp_alive) NmrpSend();
+		NmrpAliveTimerBase = NMRP_TIMEOUT_ACTIVE / 4;
+		NmrpAliveTimerStart = get_timer(0);
+	} else {
+		printf("Alive-timer %u\n", (passed / CONFIG_SYS_HZ) + NmrpAliveTimerBase);
+		/* If passed 1/4 NMRP_TIMEOUT_ACTIVE,
+		 * add 1/4 NMRP_TIMEOUT_ACTIVE to NmrpAliveTimerBase.
+		 * This is for avoiding "passed" overflow.
+		 */
+		if ((passed / CONFIG_SYS_HZ) >= (NMRP_TIMEOUT_ACTIVE / 4)) {
+			NmrpAliveTimerBase += NMRP_TIMEOUT_ACTIVE / 4;
+			NmrpAliveTimerStart = get_timer(0);
+			printf("NmrpAliveTimerBase %u\n", NmrpAliveTimerBase);
+		}
+	}
+}
+
+#ifdef DNI_NAND
+#if 0
+/**
+ * handle_nand_modify_error:
+ *
+ * Handle erase or write error occured in a NAND erase block.
+ *
+ * For now, following method is adopted:
+ *
+ *     * Read the block again. If error, mark the block as bad and reset
+ *       board.
+ *
+ *     * Optionally, if original data which is supposed to be written into the
+ *       block is provided, compare read data with it. If 2 data are
+ *       different, mark the block as bad and reset board.
+ *
+ *     * "mark the block as bad and reset board" above takes effect only when
+ *       markbad function is implemented in NAND flash driver. If markbad is
+ *       not implemented, nothing happens so that behaviors in old version of
+ *       code are preserved.
+ *
+ * @param nand       NAND device
+ * @param offset     offset in flash
+ * @param orig_data  buffer containing data before being written.
+ *                   pass NULL if you do not want to verify written data.
+ * @return           never return if block is being tried to be marked as bad
+ */
+static void handle_nand_modify_error(nand_info_t *nand, ulong offset,
+                                     uchar *orig_data)
+{
+	int rval;
+	size_t read_length = CONFIG_SYS_FLASH_SECTOR_SIZE;
+	uchar buffer[CONFIG_SYS_FLASH_SECTOR_SIZE];
+
+	printf("Try to read block 0x%lx ... ", offset);
+	rval = nand_read(nand, offset, &read_length, buffer);
+
+	/* ECC-correctable block */
+	if (rval == -EUCLEAN) {
+		rval = 0;
+	}
+	printf("%s\n", rval ? "ERROR" : "OK");
+
+	if (rval == 0 && orig_data != NULL) {
+		puts("Compare written data with original data ... ");
+		rval = memcmp(orig_data, buffer,
+		              CONFIG_SYS_FLASH_SECTOR_SIZE);
+		printf("%s\n", rval ? "DIFFERENT" : "SAME");
+	}
+
+	if (rval && nand->block_markbad != NULL) {
+		printf("Marking block 0x%lx as bad block ... ", offset);
+		rval = nand->block_markbad(nand, offset);
+		printf("%s\n", rval ? "FAILED" : "SUCCESS");
+
+		do_reset(NULL, 0, 0, NULL);
+	}
+}
+
+void update_data(ulong addr, int data_size, ulong target_addr_begin, size_t target_addr_len, int send_nmrp_alive, int mark_bad_reset)
+{
+	int offset_num;
+	uchar *src_addr;
+	ulong target_addr;
+
+	if (data_size <= 1) {
+		printf("Incorrect data size\n");
+		return;
+	}
+
+	target_addr = target_addr_begin;
+	for (offset_num = 0;
+	     offset_num < (((data_size - 1) / CONFIG_SYS_FLASH_SECTOR_SIZE) + 1);
+	     offset_num++) {
+		nand_erase_options_t nand_erase_options;
+		size_t write_size;
+		int ret = 0;
+
+		/* erase 64K */
+		while (nand_block_isbad(&nand_info[0], target_addr)) {
+			printf("Skipping erasing bad block at 0x%08lx\n", target_addr);
+			target_addr += CONFIG_SYS_FLASH_SECTOR_SIZE;
+		}
+		if (target_addr >= target_addr_begin + target_addr_len)
+			goto bad_nand;
+
+		printf("Erasing: off %x, size %x\n", target_addr, CONFIG_SYS_FLASH_SECTOR_SIZE);
+		memset(&nand_erase_options, 0, sizeof(nand_erase_options));
+		nand_erase_options.length = CONFIG_SYS_FLASH_SECTOR_SIZE;
+		nand_erase_options.quiet = 0;
+		nand_erase_options.jffs2 = 1;
+		nand_erase_options.scrub = 0;
+		nand_erase_options.offset = target_addr;
+		ret = nand_erase_opts(&nand_info[0], &nand_erase_options);
+		printf("%s\n", ret ? "ERROR" : "OK");
+
+		if (mark_bad_reset && ret) {
+			handle_nand_modify_error(
+				&nand_info[0], target_addr, NULL);
+		}
+
+		src_addr = addr + offset_num * CONFIG_SYS_FLASH_SECTOR_SIZE;
+
+		printf("Writing: from RAM addr %x, to NAND off %x, size %x\n", src_addr, target_addr, CONFIG_SYS_FLASH_SECTOR_SIZE);
+		write_size = CONFIG_SYS_FLASH_SECTOR_SIZE;
+		ret = nand_write_skip_bad(&nand_info[0], target_addr, &write_size, (u_char *)src_addr, 0);
+		printf(" %zu bytes written: %s\n", write_size,
+		       ret ? "ERROR" : "OK");
+
+		if (mark_bad_reset && ret) {
+			handle_nand_modify_error(
+				&nand_info[0], target_addr, src_addr);
+		}
+
+		CheckNmrpAliveTimerExpire(send_nmrp_alive);
+		target_addr += CONFIG_SYS_FLASH_SECTOR_SIZE;
+	}
+	return;
+bad_nand:
+	printf("** FAIL !! too many bad blocks, no enough space for data.\n");
+}
+#endif
+void update_firmware(ulong addr, int firmware_size)
+{
+    int ret = -1;
+    int img_index = get_img_index_for_upgrade(0);
+    ret = flash_upgrade_img_bundle(addr, img_index, NULL);
+
+		if( ret ) {
+			printf("ERROR: HTTP Image upgrade failed!!\n");
+		} else {
+			printf("INFO: HTTP Image upgrade successfull!!\n");		
+			//FIXME: Check boot once flag before committing?
+			commit_image( img_index );
+		}
+#ifdef CONFIG_SYS_NMRP
+	if(NmrpState != 0)
+		return;
+#endif
+	printf ("Done\nRebooting...\n");
+	
+	do_reset(NULL,0,0,NULL);
+}
+#endif
+
+#if 0 //ndef DNI_NAND
+void update_firmware(ulong addr, int firmware_size)
+{
+	if (firmware_size <= 0) {
+		printf("Incorrect firmware size\n");
+		return;
+	}
+	int offset_num;
+	uchar *src_addr;
+	ulong target_addr;
+
+	target_addr = CONFIG_SYS_IMAGE_ADDR_BEGIN;
+	for (offset_num = 0;
+	     offset_num < ((firmware_size / CONFIG_SYS_FLASH_SECTOR_SIZE) + 1);
+	     offset_num++) {
+
+		/* erase 64K */
+		flash_sect_erase(CONFIG_SYS_IMAGE_ADDR_BEGIN +
+				 offset_num * CONFIG_SYS_FLASH_SECTOR_SIZE,
+				 CONFIG_SYS_IMAGE_ADDR_BEGIN +
+				 ((offset_num + 1) * CONFIG_SYS_FLASH_SECTOR_SIZE) - 1);
+
+		CheckNmrpAliveTimerExpire(1);
+		target_addr += CONFIG_SYS_FLASH_SECTOR_SIZE;
+	}
+	printf ("Copy image to Flash... ");
+	target_addr = CONFIG_SYS_IMAGE_ADDR_BEGIN;
+	for (offset_num = 0;
+	     offset_num < ((firmware_size / CONFIG_SYS_FLASH_SECTOR_SIZE) + 1);
+	     offset_num++) {
+
+		src_addr = addr + offset_num * CONFIG_SYS_FLASH_SECTOR_SIZE;
+		flash_write(src_addr, target_addr, CONFIG_SYS_FLASH_SECTOR_SIZE);
+
+		CheckNmrpAliveTimerExpire(1);
+		target_addr += CONFIG_SYS_FLASH_SECTOR_SIZE;
+	}
+#ifdef CONFIG_SYS_NMRP
+	if(NmrpState != 0)
+		return;
+#endif
+	printf ("Done\nRebooting...\n");
+
+	do_reset(NULL,0,0,NULL);
+}
+#endif
+
+void StartTftpServerToRecoveFirmware (void)
+{
+#if 0//todo
+	NetRunTftpServer = 1;
+	ulong addr;
+	image_header_t *hdr;
+	int file_size;
+	char *s;
+	/* pre-set load_addr from CONFIG_SYS_LOAD_ADDR */
+	load_addr = CONFIG_SYS_LOAD_ADDR;//bosheng_add 
+	load_addr = load_addr+2;//bosheng_add memory error modify 0x84000000=>0x84000002
+	//printf("load_addr=0x%08x\n",load_addr);
+	//printf("CONFIG_SYS_LOAD_ADDR=0x%08x\n",CONFIG_SYS_LOAD_ADDR);
+	//printf("load_addr_2=0x%08x\n",load_addr);
+	/* pre-set load_addr from $loadaddr */
+	if ((s = getenv("loadaddr")) != NULL) {
+		load_addr = simple_strtoul(s, NULL, 16);
+	}
+
+tftpstart:
+	addr = load_addr;
+	file_size = net_loop(TFTPGET);
+	if (file_size < 1)
+	{
+		printf ("\nFirmware recovering from TFTP server is stopped or failed! :( \n");
+		NetRunTftpServer = 0;
+		return;
+	}
+
+	//  copy Image to flash
+
+#ifdef CONFIG_SYS_NMRP
+	if (NmrpState == STATE_CLOSED)
+		return;
+	else if ( NmrpState !=0 )
+		NmrpState = STATE_CLOSING;
+#endif
+	//hdr = (image_header_t *)(addr + HEADER_LEN);
+	hdr = (image_header_t *)(addr + HEADER_LEN);
+	printf("hdr=0x%08x\n",hdr);
+	printf("addr=0x%08x\n",addr);
+	printf("addr=0x%08x\n",addr);
+	//printf("(image_header_t *)(addr=0x%08x\n",(image_header_t *)(addr);
+	//printf("(image_header_t *)(addr=0x%08x\n",(image_header_t *)(addr);
+	//printf("(image_header_t +1*)(addr=0x%08x\n",(image_header_t *)(addr+1);
+	//printf("(image_header_t -1*)(addr=0x%08x\n",(image_header_t *)(addr-1);
+	printf("HEA_d=%d\n",HEADER_LEN);
+	printf("HEA_x=0x%08x\n",HEADER_LEN);
+
+
+/***************************************************************///bosheng_board match_test
+#if 1
+	if (!board_match_image_board_id(addr))
+	{
+		printf("board model id mismatch with image id, updating board ID\n");
+		ResetTftpServer();
+		goto tftpstart;
+	}
+#endif
+/***************************************************************/
+
+	//memcpy(add,(add+1),1)
+	/* bosheng_rm
+	if (!board_model_id_match_open_source_id() &&
+	    !image_match_open_source_fw_id(addr) &&
+	    ntohl(hdr->ih_magic) != IH_MAGIC) {
+		puts ("Bad Magic Number,it is forbidden to be written to flash!!\n");
+		ResetTftpServer();
+		goto tftpstart;
+	}
+	*/
+#ifdef NETGEAR_BOARD_ID_SUPPORT
+	if (!board_match_image_hw_id(addr)) {
+		puts ("Board HW ID mismatch,it is forbidden to be written to flash!!\n");
+		ResetTftpServer();
+		goto tftpstart;
+	}
+/*
+	if (!board_model_id_match_open_source_id() &&
+	    (!board_match_image_model_id(addr) &&
+	     !image_match_open_source_fw_id(addr))) {
+		puts ("Board MODEL ID mismatch,it is forbidden to be written to flash!!\n");
+		ResetTftpServer();
+		goto tftpstart;
+	}
+	if (!board_match_image_model_id(addr)) {
+		printf("board model id mismatch with image id, updating board ID\n");
+		board_update_image_model_id(addr);
+	}
+*/
+#endif
+	update_firmware(addr + HEADER_LEN, file_size - HEADER_LEN);
+#ifdef CONFIG_SYS_NMRP
+	if (NmrpState == STATE_CLOSING)
+	{
+		net_set_udp_handler(NmrpHandler);
+		NmrpSend();
+	}
+#endif
+	/*
+	 *  It indicates that tftp server would leave running state when
+	 *  this function returns.
+	 */
+	NetRunTftpServer = 0;
+#endif //todo
+}
+
+int do_fw_recovery (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
+{
+	StartTftpServerToRecoveFirmware();
+	return 0;
+}
+
+U_BOOT_CMD(
+	fw_recovery,	1,	0,	do_fw_recovery,
+	"start tftp server to recovery dni firmware image.",
+	"- start tftp server to recovery dni firmware image."
+);
+
+#if defined(CONFIG_SYS_NMRP) && defined(CONFIG_SYS_SINGLE_FIRMWARE)
+void UpgradeFirmwareFromNmrpServer(void)
+{
+	NetRunTftpServer = 1;
+	ulong addr;
+	image_header_t *hdr;
+	int file_size;
+	char *s;
+	/* pre-set load_addr from CONFIG_SYS_LOAD_ADDR */
+	load_addr = 0x1000000; //CONFIG_SYS_LOAD_ADDR;
+	load_addr = load_addr+2;//bosheng_add memory error modify 0x84000000=>0x84000002
+	/* pre-set load_addr from $loadaddr */
+
+	if ((s = env_get("loadaddr")) != NULL) {
+		load_addr = simple_strtoul(s, NULL, 16);
+	}
+
+	addr = load_addr;
+	file_size = net_loop(TFTPGET);
+	if (file_size < 1)
+	{
+		printf ("\nFirmware recovering from TFTP server is stopped or failed! :( \n");
+		NetRunTftpServer = 0;
+		return;
+	}
+
+#if defined(CONFIG_SYS_SINGLE_FIRMWARE)
+	NmrpState = STATE_TFTPUPLOADING;
+	net_set_udp_handler(NmrpHandler);
+	NmrpSend();
+#endif
+
+	printf("Ignore Magic number checking when upgrade via NMRP,Magic number is %x!\n", IH_MAGIC);
+	//  copy Image to flash
+#ifdef NETGEAR_BOARD_ID_SUPPORT
+	if (board_match_image_hw_id(addr)) {
+		update_firmware(addr + HEADER_LEN, file_size - HEADER_LEN);
+		board_update_image_model_id(addr);
+	}
+	else {
+		puts ("Board HW ID mismatch,it is forbidden to be written to flash!!\n");
+	}
+#else
+/*******************************************///[bosheng]check the  board id
+	if(board_match_image_board_id(addr)){
+	    NmrpState = STATE_KEEP_ALIVE;
+	    net_set_udp_handler(NmrpHandler);
+		eth_halt();
+        mdelay(1000);
+		eth_init();
+        mdelay(500);
+	    NmrpSend();
+		update_firmware(addr + HEADER_LEN, file_size - HEADER_LEN);
+	}else{
+		puts ("Board HW ID mismatch,it is forbidden to be written to flash!!\n");
+	}
+/******************************************/
+#endif
+
+#if defined(CONFIG_SYS_SINGLE_FIRMWARE)
+	/* firmware write to flash done */
+	NmrpFwUPOption = 0;
+	if (NmrpSTUPOption == 1) {
+		NmrpState = STATE_CONFIGING;
+	} else {
+		NmrpState = STATE_CLOSING;
+	}
+#else
+	NmrpState = STATE_CLOSING;
+#endif
+	net_set_udp_handler(NmrpHandler);
+	NmrpSend();
+	NetRunTftpServer = 0;
+}
+#endif
+
+#if defined(CONFIG_SYS_NMRP) && defined(CONFIG_SYS_SINGLE_FIRMWARE)
+void UpgradeStringTableFromNmrpServer(int table_num)
+{
+#if 0
+	NetRunTftpServer = 1;
+	ulong addr;
+	image_header_t *hdr;
+	int file_size;
+	char *s;
+
+	/* pre-set load_addr from CONFIG_SYS_LOAD_ADDR */
+	load_addr = CONFIG_SYS_LOAD_ADDR;
+
+	/* pre-set load_addr from $loadaddr */
+	if ((s = getenv("loadaddr")) != NULL) {
+		load_addr = simple_strtoul(s, NULL, 16);
+	}
+
+	addr = load_addr;
+	memset(addr, 0, CONFIG_SYS_STRING_TABLE_LEN);
+	file_size = net_loop(TFTPGET);
+	if (file_size < 1)
+	{
+		printf ("\nUpdating string table %d from TFTP server \
+			is stopped or failed! :( \n", table_num);
+		NetRunTftpServer = 0;
+		return;
+	}
+
+	/* TFTP Uploading done */
+	NmrpState = STATE_TFTPUPLOADING;
+	net_set_udp_handler(NmrpHandler);
+	NmrpSend();
+
+	/* Write String Table to flash */
+	board_upgrade_string_table((uchar *)addr, table_num, file_size);//bosheng_modify
+
+	/* upgrade string table done, check if more files */
+	NmrpStringTableUpdateIndex++;
+	if (NmrpStringTableUpdateIndex == NmrpStringTableUpdateCount)
+		NmrpSTUPOption = 0;
+	if (NmrpFwUPOption == 0 && NmrpSTUPOption == 0) {
+		workaround_qca8337_gmac_nmrp_hang_action();
+		printf("Upgrading all done\n");
+		NmrpState = STATE_CLOSING;
+		net_set_udp_handler(NmrpHandler);
+		NmrpSend();
+	} else {
+		printf("More files to be upgrading\n");
+		workaround_qca8337_gmac_nmrp_hang_action();
+		NmrpState = STATE_CONFIGING;
+		net_set_udp_handler(NmrpHandler);
+		NmrpSend();
+	}
+	NetRunTftpServer = 0;
+#endif
+}
+#endif
+
+void ResetTftpServer(void)
+{
+	time_handler = 0;
+#ifdef CONFIG_SYS_NMRP
+	if(NmrpState != 0)
+	{
+		NmrpState = STATE_CONFIGING;
+		NmrpSend();
+	}
+	else
+#endif
+	net_set_state(NETLOOP_RESTART);
+}
+#endif
+#ifdef CONFIG_SYS_NMRP
+void StartNmrpClient(void)
+{
+    //i2c_led_ctrl(LED_LP5562_WHITE, 3, 100);
+    mdelay(4000);
+    if( net_loop(NMRP) < 1)
+    {
+                printf("\n nmrp server is stopped or failed !\n");
+                return;
+    }
+}
+void ResetBootup_usual(void)
+{
+        time_handler = 0;
+        net_set_state(NETLOOP_SUCCESS);
+}
+
+#if 1// defined(CONFIG_SYS_NMRP) && defined(CONFIG_CMD_NMRP)
+int do_nmrp (cmd_tbl_t *cmdtp, int flag, int argc, char *argv[])
+{
+	StartNmrpClient();
+	return 0;
+}
+
+U_BOOT_CMD(
+	nmrp,	1,	0,	do_nmrp,
+	"start nmrp mechanism to upgrade firmware-image or string-table.",
+	"- start nmrp mechanism to upgrade firmware-image or string-table."
+);
+#endif
+#endif
+/* This image header is not completeness, it lack Board ID files */
+typedef struct imageHdr_s
+{
+    unsigned char magic[4];     /* magic */
+    unsigned char header_len[4];        /* Length of header */
+    unsigned char reserved[8];
+    unsigned char kernel_chksum[4];
+    unsigned char rootfs_chksum[4];
+    unsigned char kernel_len[4];        /* Length of kernel */
+    unsigned char rootfs_len[4];        /* Length of rootfs */
+    unsigned char image_chksum[4];      /* checksum across length of image */
+    unsigned char header_chksum[4];     /* checksum across length of header */
+} imageHdr_s;
+
+
+int board_match_image_board_id(ulong fw_image_addr)
+{
+	int ret;
+ 	char board_model_id[BOARD_MODEL_ID_LENGTH+1];
+ 	char image_model_id[BOARD_MODEL_ID_LENGTH+1];
+	unsigned long headeroffset = 0;
+
+	headeroffset=sizeof(imageHdr_s); 
+	printf("offfset=%d\n",headeroffset);
+	printf("fw_image=0x%08x\n",fw_image_addr);
+	
+    memset(board_model_id, 0, BOARD_MODEL_ID_LENGTH+1);
+    memset(image_model_id, 0, BOARD_MODEL_ID_LENGTH+1);
+    memcpy(board_model_id, env_get("Netgear_boardid"),
+           BOARD_MODEL_ID_LENGTH);
+    memcpy(image_model_id, (char *)fw_image_addr+headeroffset,
+           BOARD_MODEL_ID_LENGTH);//[bosheng_add]image id board_id_offset=> fw_image_addr+40 = image_board_id_offset
+    printf("MODEL ID on board: %s\n", board_model_id);
+    printf("image ID on board: %s\n", image_model_id);
+    if (strcmp(board_model_id, image_model_id) != 0) {
+            printf("Firmware Image HW ID do not match Board HW ID\n");
+            return 0;
+    }
+    printf("Firmware Image HW ID matched Board HW ID\n\n");
+    return 1;
+}
+#if defined(CONFIG_SYS_SINGLE_FIRMWARE)
+extern int nand_env_device;;
+void board_upgrade_string_table(unsigned char *load_addr, int table_number, unsigned int file_size)
+{
+#if 0 //todo
+    unsigned char *string_table_addr, *addr2;
+    unsigned long offset;
+    unsigned int table_length;
+    unsigned char high_bit, low_bit;
+    unsigned long passed;
+    int offset_num;
+    uchar *src_addr;
+    ulong target_addr;
+
+/**************************************************/
+	nand_erase_options_t nand_erase_options;
+	size_t end = CONFIG_SYS_STRING_TABLE_ADDR_BEGIN + ((table_number)* CONFIG_SYS_STRING_TABLE_TOTAL_LEN) ;
+	size_t amount_saved = 0;
+	size_t blocksize, len;
+    u32 start_blocks;
+	u32 size_blocks;
+	u_char *char_ptr;
+	
+	blocksize = nand_info[nand_env_device].erasesize;
+	if (!blocksize)
+		return 1;
+	len = min(blocksize, CONFIG_SYS_STRING_TABLE_TOTAL_LEN);
+	memset(&nand_erase_options, 0, sizeof(nand_erase_options));
+    offset = CONFIG_SYS_STRING_TABLE_ADDR_BEGIN + ((table_number - 1)* CONFIG_SYS_STRING_TABLE_TOTAL_LEN);
+
+	nand_erase_options.length = CONFIG_SYS_STRING_TABLE_TOTAL_LEN;
+	nand_erase_options.offset = offset;
+	
+	printf("Erasing Nand...\n");
+
+	printf("offset=0x%08x\n",offset);
+	printf("file_size=0x%08x\n",file_size);
+	printf("load_addr=0x%08x\n",load_addr);
+	printf("load_addr=0x%08x\n",*load_addr);
+	if (nand_erase_opts(&nand_info[nand_env_device], &nand_erase_options))
+		return 1;
+    printf("Writing to Nand... ");
+	while (amount_saved < file_size && offset < end) {
+		if (nand_block_isbad(&nand_info[nand_env_device], offset)) {
+			offset += blocksize;
+		} else {
+			//char_ptr = &buf[amount_saved];
+			if (nand_write(&nand_info[nand_env_device],
+				       offset, &len, load_addr))
+
+			offset += blocksize;
+			amount_saved += len;
+		}
+	}
+	
+	//if (amount_saved != CONFIG_ENV_SIZE)//bosheng_rm 
+	//	return 1;
+
+    /* Check if Alive-timer expires? */
+    passed = get_timer(NmrpAliveTimerStart);
+        if ((passed / CONFIG_SYS_HZ) + NmrpAliveTimerBase > NmrpAliveTimerTimeout) {
+            printf("Active-timer expires\n");
+            NmrpSend();
+            NmrpAliveTimerBase = NmrpAliveTimerTimeout / 4;
+            NmrpAliveTimerStart = get_timer(0);
+        } else {
+            printf("Alive-timer %u\n",(passed / CONFIG_SYS_HZ) + NmrpAliveTimerBase);
+            /* If passed 1/4 NmrpAliveTimerTimeout,
+             * add 1/4 NmrpAliveTimerTimeout to NmrpAliveTimerBase.
+             * This is for avoiding "passed" overflow.
+             */
+            if ((passed) / CONFIG_SYS_HZ >= (NmrpAliveTimerTimeout / 4)) {
+                NmrpAliveTimerBase += NmrpAliveTimerTimeout / 4;
+                NmrpAliveTimerStart = get_timer(0);
+            }
+        }
+    //}
+#endif //todo
+    return;
+}
+#endif

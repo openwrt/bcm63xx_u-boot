@@ -362,4 +362,10 @@ config MT7621_GPIO
 	help
 	  Say yes here to support MediaTek MT7621 compatible GPIOs.
 
+config BCMBCA_GPIO
+	bool "BCMBCA GPIO driver"
+	depends on DM_GPIO && ARCH_BCMBCA && PINCTRL_BCMBCA 
+	help
+	  This driver supports the GPIO on BCMBCA SoC's.
+
 endmenu

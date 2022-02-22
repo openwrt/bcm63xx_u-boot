@@ -1342,9 +1342,7 @@ static int self_check_write(struct ubi_device *ubi, const void *buf, int pnum,
 	for (i = 0; i < len; i++) {
 		uint8_t c = ((uint8_t *)buf)[i];
 		uint8_t c1 = ((uint8_t *)buf1)[i];
-#if !defined(CONFIG_UBI_SILENCE_MSG)
 		int dump_len = max_t(int, 128, len - i);
-#endif
 
 		if (c == c1)
 			continue;

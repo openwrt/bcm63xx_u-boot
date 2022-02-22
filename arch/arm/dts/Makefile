@@ -757,6 +757,49 @@ dtb-$(CONFIG_ARCH_BCM63158) += \
 dtb-$(CONFIG_ARCH_BCM6858) += \
 	bcm968580xref.dtb
 
+dtb-$(CONFIG_BCM63158) += \
+	bcm963158.dtb
+
+dtb-$(CONFIG_BCM6858) += \
+	bcm96858.dtb
+
+dtb-$(CONFIG_BCM6856) += \
+	bcm96856.dtb
+
+dtb-$(CONFIG_BCM63178) += \
+	bcm963178.dtb
+
+dtb-$(CONFIG_BCM47622) += \
+	bcm947622.dtb \
+	bcm947622ref1sg.dtb
+
+dtb-$(CONFIG_BCM6756) += \
+	bcm96756.dtb
+
+dtb-$(CONFIG_BCM4908) += \
+	bcm94908.dtb
+
+dtb-$(CONFIG_BCM4912) += \
+	bcm94912.dtb
+
+dtb-$(CONFIG_BCM63138) += \
+	bcm963138.dtb
+
+dtb-$(CONFIG_BCM63148) += \
+	bcm963148.dtb
+
+dtb-$(CONFIG_BCM63146) += \
+	bcm963146.dtb
+
+dtb-$(CONFIG_BCM6846) += \
+	bcm96846.dtb
+
+dtb-$(CONFIG_BCM6878) += \
+	bcm96878.dtb
+
+dtb-$(CONFIG_BCM6855) += \
+	bcm96855.dtb
+
 dtb-$(CONFIG_ARCH_ASPEED) += ast2500-evb.dtb
 
 dtb-$(CONFIG_ARCH_STI) += stih410-b2260.dtb

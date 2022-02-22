@@ -75,6 +75,7 @@
 #define SPI_PFL_MODE_MDWRSZ_MASK	(1 << SPI_PFL_MODE_MDWRSZ_SHIFT)
 #define SPI_PFL_MODE_3WIRE_SHIFT	20
 #define SPI_PFL_MODE_3WIRE_MASK		(1 << SPI_PFL_MODE_3WIRE_SHIFT)
+#define SPI_PFL_MODE_PREPEND_CNT_SHIFT	24
 
 /* SPI Ping-Pong FIFO registers */
 #define HSSPI_FIFO_SIZE			0x200
@@ -93,12 +94,17 @@
 #define HSSPI_FIFO_OP_CODE_W		(2 << HSSPI_FIFO_OP_CODE_SHIFT)
 #define HSSPI_FIFO_OP_CODE_R		(3 << HSSPI_FIFO_OP_CODE_SHIFT)
 
+#define HSSPI_MAX_DATA_SIZE		(HSSPI_FIFO_SIZE - HSSPI_FIFO_OP_SIZE)
+
 struct bcm63xx_hsspi_priv {
 	void __iomem *regs;
 	ulong clk_rate;
 	uint8_t num_cs;
 	uint8_t cs_pols;
 	uint speed;
+	uint max_speed;
+	int use_cswar;
+	uint32_t prepend_bytes;
 };
 
 static int bcm63xx_hsspi_cs_info(struct udevice *bus, uint cs,
@@ -120,9 +126,9 @@ static int bcm63xx_hsspi_set_mode(struct udevice *bus, uint mode)
 
 	/* clock polarity */
 	if (mode & SPI_CPOL)
-		setbits_be32(priv->regs + SPI_CTL_REG, SPI_CTL_CLK_POL_MASK);
+		setbits_32(priv->regs + SPI_CTL_REG, SPI_CTL_CLK_POL_MASK);
 	else
-		clrbits_be32(priv->regs + SPI_CTL_REG, SPI_CTL_CLK_POL_MASK);
+		clrbits_32(priv->regs + SPI_CTL_REG, SPI_CTL_CLK_POL_MASK);
 
 	return 0;
 }
@@ -131,7 +137,10 @@ static int bcm63xx_hsspi_set_speed(struct udevice *bus, uint speed)
 {
 	struct bcm63xx_hsspi_priv *priv = dev_get_priv(bus);
 
-	priv->speed = speed;
+	if (priv->max_speed && speed > priv->max_speed) {
+		priv->speed = priv->max_speed;
+	} else
+		priv->speed = speed;
 
 	return 0;
 }
@@ -146,7 +155,7 @@ static void bcm63xx_hsspi_activate_cs(struct bcm63xx_hsspi_priv *priv,
 	set = DIV_ROUND_UP(2048, set);
 	set &= SPI_PFL_CLK_FREQ_MASK;
 	set |= SPI_PFL_CLK_RSTLOOP_MASK;
-	writel_be(set, priv->regs + SPI_PFL_CLK_REG(plat->cs));
+	writel(set, priv->regs + SPI_PFL_CLK_REG(plat->cs));
 
 	/* profile signal */
 	set = 0;
@@ -164,33 +173,155 @@ static void bcm63xx_hsspi_activate_cs(struct bcm63xx_hsspi_priv *priv,
 	if (priv->speed > SPI_MAX_SYNC_CLOCK)
 		set |= SPI_PFL_SIG_ASYNCIN_MASK;
 
-	clrsetbits_be32(priv->regs + SPI_PFL_SIG_REG(plat->cs), clr, set);
+	clrsetbits_32(priv->regs + SPI_PFL_SIG_REG(plat->cs), clr, set);
 
 	/* global control */
 	set = 0;
 	clr = 0;
 
-	/* invert cs polarity */
-	if (priv->cs_pols & BIT(plat->cs))
-		clr |= BIT(plat->cs);
-	else
-		set |= BIT(plat->cs);
+	if (priv->use_cswar) {
+		/* invert cs polarity */
+		if (priv->cs_pols & BIT(plat->cs))
+			clr |= BIT(plat->cs);
+		else
+			set |= BIT(plat->cs);
 
-	/* invert dummy cs polarity */
-	if (priv->cs_pols & BIT(!plat->cs))
-		clr |= BIT(!plat->cs);
-	else
-		set |= BIT(!plat->cs);
+		/* invert dummy cs polarity */
+		if (priv->cs_pols & BIT(!plat->cs))
+			clr |= BIT(!plat->cs);
+		else
+			set |= BIT(!plat->cs);
+	} else {
+		if (priv->cs_pols & BIT(plat->cs))
+			set |= BIT(plat->cs);
+		else
+			clr |= BIT(plat->cs);
+	}
 
-	clrsetbits_be32(priv->regs + SPI_CTL_REG, clr, set);
+	clrsetbits_32(priv->regs + SPI_CTL_REG, clr, set);
 }
 
 static void bcm63xx_hsspi_deactivate_cs(struct bcm63xx_hsspi_priv *priv)
 {
 	/* restore cs polarities */
-	clrsetbits_be32(priv->regs + SPI_CTL_REG, SPI_CTL_CS_POL_MASK,
+	clrsetbits_32(priv->regs + SPI_CTL_REG, SPI_CTL_CS_POL_MASK,
 			priv->cs_pols);
 }
+
+static int bcm63xx_hsspi_prepend_xfer(struct udevice *dev,
+				      unsigned int bitlen, const void *dout,
+				      void *din, unsigned long flags)
+{
+	struct bcm63xx_hsspi_priv *priv = dev_get_priv(dev->parent);
+	struct dm_spi_slave_platdata *plat = dev_get_parent_platdata(dev);
+	uint16_t opcode = 0;
+	uint32_t val;
+	size_t data_bytes = bitlen / 8;	
+	int ret;
+
+	/*
+	 * only support multiple half duplex write transfer + optional
+	 * full duplex read/write at the end.
+	 */  
+	if (flags & SPI_XFER_BEGIN) {
+		/* clear prepends */
+		priv->prepend_bytes = 0;
+	}
+
+	if (din) {
+		/* buffering reads not possible since cs is hw controlled */
+		if (!(flags & SPI_XFER_END)) {
+			printf("unable to buffer reads\n");
+			printf("set use_cs_workaround in dts to enable cs workaround\n");			
+			return -EINVAL;
+		}
+
+		/* check rx size */
+		if (data_bytes > HSSPI_MAX_DATA_SIZE) {
+			printf("max rx bytes exceeded\n");
+			return -EMSGSIZE;
+		}
+	}
+
+	if (dout) {
+		/* check tx size */
+		if (priv->prepend_bytes + data_bytes > HSSPI_MAX_DATA_SIZE) {
+			printf("max tx bytes exceeded\n");
+			return -EMSGSIZE;
+		}
+
+		/* copy tx data */
+		memcpy_toio(priv->regs + HSSPI_FIFO_BASE + HSSPI_FIFO_OP_SIZE + priv->prepend_bytes,
+			    dout, data_bytes);
+		priv->prepend_bytes += data_bytes;
+	}
+
+	if (flags & SPI_XFER_END) {
+		bcm63xx_hsspi_activate_cs(priv, plat);
+		if (dout && !din) {
+			/* all half-duplex write. merge to single write */
+			data_bytes = priv->prepend_bytes;
+			opcode = HSSPI_FIFO_OP_CODE_W;
+			priv->prepend_bytes = 0;
+		} else if (!dout && din) {
+			/* half-duplex read with prepend write */
+			opcode = HSSPI_FIFO_OP_CODE_R;
+		} else {
+			/* full duplex read/write */
+			opcode = HSSPI_FIFO_OP_READ_WRITE;
+			priv->prepend_bytes -= data_bytes;
+		}
+
+		/* profile mode */
+		val = SPI_PFL_MODE_FILL_MASK;
+		if (plat->mode & SPI_3WIRE)
+			val |= SPI_PFL_MODE_3WIRE_MASK;
+				
+		/* dual mode */
+		if ((opcode == HSSPI_FIFO_OP_CODE_R && plat->mode == SPI_RX_DUAL) ||
+		    (opcode == HSSPI_FIFO_OP_CODE_W && plat->mode == SPI_TX_DUAL)) {
+			opcode |= HSSPI_FIFO_OP_MBIT_MASK;
+			if (plat->mode == SPI_RX_DUAL)
+				val |= SPI_PFL_MODE_MDRDSZ_MASK;
+			if (plat->mode == SPI_TX_DUAL)
+				val |= SPI_PFL_MODE_MDWRSZ_MASK;		  
+		}
+		val |= (priv->prepend_bytes << SPI_PFL_MODE_PREPEND_CNT_SHIFT);
+		writel(val, priv->regs + SPI_PFL_MODE_REG(plat->cs));
+
+		/* set fifo operation */
+		val = opcode | (data_bytes & HSSPI_FIFO_OP_BYTES_MASK);
+		writew(cpu_to_be16(val),
+		       priv->regs + HSSPI_FIFO_OP_REG);
+
+		/* issue the transfer */
+		val = SPI_CMD_OP_START;
+		val |= (plat->cs << SPI_CMD_PFL_SHIFT) &
+		       SPI_CMD_PFL_MASK;
+		val |= (plat->cs << SPI_CMD_SLAVE_SHIFT) &
+		       SPI_CMD_SLAVE_MASK;
+		writel(val, priv->regs + SPI_CMD_REG);
+
+		/* wait for completion */
+		ret = wait_for_bit_32(priv->regs + SPI_STAT_REG,
+					SPI_STAT_SRCBUSY_MASK, false,
+					1000, false);
+		if (ret) {
+			bcm63xx_hsspi_deactivate_cs(priv);		  
+			printf("spi polling timeout\n");
+			return ret;
+		}
+
+		/* copy rx data */
+		if (din)
+			memcpy_fromio(din, priv->regs + HSSPI_FIFO_BASE,
+				data_bytes);
+		bcm63xx_hsspi_deactivate_cs(priv);
+	}
+
+	return 0;
+}
+
 
 /*
  * BCM63xx HSSPI driver doesn't allow keeping CS active between transfers
@@ -222,6 +353,10 @@ static int bcm63xx_hsspi_xfer(struct udevice *dev, unsigned int bitlen,
 	const uint8_t *tx = dout;
 	uint8_t *rx = din;
 
+	if (!priv->use_cswar)
+		return bcm63xx_hsspi_prepend_xfer(dev, bitlen,
+		    dout, din, flags);
+
 	if (flags & SPI_XFER_BEGIN)
 		bcm63xx_hsspi_activate_cs(priv, plat);
 
@@ -247,7 +382,7 @@ static int bcm63xx_hsspi_xfer(struct udevice *dev, unsigned int bitlen,
 	      SPI_PFL_MODE_MDWRSZ_MASK;
 	if (plat->mode & SPI_3WIRE)
 		val |= SPI_PFL_MODE_3WIRE_MASK;
-	writel_be(val, priv->regs + SPI_PFL_MODE_REG(plat->cs));
+	writel(val, priv->regs + SPI_PFL_MODE_REG(plat->cs));
 
 	/* transfer loop */
 	while (data_bytes > 0) {
@@ -262,7 +397,7 @@ static int bcm63xx_hsspi_xfer(struct udevice *dev, unsigned int bitlen,
 		}
 
 		/* set fifo operation */
-		writew_be(opcode | (curr_step & HSSPI_FIFO_OP_BYTES_MASK),
+		writew(cpu_to_be16(opcode | (curr_step & HSSPI_FIFO_OP_BYTES_MASK)),
 			  priv->regs + HSSPI_FIFO_OP_REG);
 
 		/* issue the transfer */
@@ -271,10 +406,10 @@ static int bcm63xx_hsspi_xfer(struct udevice *dev, unsigned int bitlen,
 		       SPI_CMD_PFL_MASK;
 		val |= (!plat->cs << SPI_CMD_SLAVE_SHIFT) &
 		       SPI_CMD_SLAVE_MASK;
-		writel_be(val, priv->regs + SPI_CMD_REG);
+		writel(val, priv->regs + SPI_CMD_REG);
 
 		/* wait for completion */
-		ret = wait_for_bit_be32(priv->regs + SPI_STAT_REG,
+		ret = wait_for_bit_32(priv->regs + SPI_STAT_REG,
 					SPI_STAT_SRCBUSY_MASK, false,
 					1000, false);
 		if (ret) {
@@ -314,6 +449,7 @@ static int bcm63xx_hsspi_child_pre_probe(struct udevice *dev)
 {
 	struct bcm63xx_hsspi_priv *priv = dev_get_priv(dev->parent);
 	struct dm_spi_slave_platdata *plat = dev_get_parent_platdata(dev);
+	struct spi_slave *slave = dev_get_parent_priv(dev);
 
 	/* check cs */
 	if (plat->cs >= priv->num_cs) {
@@ -327,6 +463,15 @@ static int bcm63xx_hsspi_child_pre_probe(struct udevice *dev)
 	else
 		priv->cs_pols &= ~BIT(plat->cs);
 
+	/* 
+	 * set the max read/write size to make sure each xfer are within the
+	 * prepend limit
+	 */
+	if (priv->use_cswar == 0) {	
+		slave->max_read_size = HSSPI_MAX_DATA_SIZE;
+		slave->max_write_size = HSSPI_MAX_DATA_SIZE;
+	}
+
 	return 0;
 }
 
@@ -336,12 +481,30 @@ static int bcm63xx_hsspi_probe(struct udevice *dev)
 	struct reset_ctl rst_ctl;
 	struct clk clk;
 	int ret;
-
+	u32 freq = 0;
+	
 	priv->regs = dev_remap_addr(dev);
 	if (!priv->regs)
 		return -EINVAL;
 
 	priv->num_cs = dev_read_u32_default(dev, "num-cs", 8);
+	/* 
+	 * on the board that does not brought dummy cs1 and not
+	 * pinmux to cs function, spi bus does not work at fast
+	 * clock. max-uboot-freq property limits the bus speed to
+	 * workaroud this problem.
+	 */
+	if (dev_read_u32(dev, "max-uboot-freq", &freq) == 0) {
+		priv->max_speed = freq;
+		if (priv->max_speed > SPI_MAX_SYNC_CLOCK)
+			priv->max_speed = SPI_MAX_SYNC_CLOCK;
+		printf("limit spi bus speed to %dHz\n", priv->max_speed);
+	}
+	else
+		priv->max_speed = 0;
+
+	/* check if dummy cs workaround is enforced */
+	priv->use_cswar = dev_read_u32_default(dev, "use_cs_workaround", 0);
 
 	/* enable clock */
 	ret = clk_get_by_name(dev, "hsspi", &clk);
@@ -349,48 +512,47 @@ static int bcm63xx_hsspi_probe(struct udevice *dev)
 		return ret;
 
 	ret = clk_enable(&clk);
-	if (ret < 0)
+	if (ret < 0 && ret != -ENOSYS)
 		return ret;
 
 	ret = clk_free(&clk);
-	if (ret < 0)
+	if (ret < 0 && ret != -ENOSYS)
 		return ret;
 
 	/* get clock rate */
 	ret = clk_get_by_name(dev, "pll", &clk);
-	if (ret < 0)
+	if (ret < 0 && ret != -ENOSYS)
 		return ret;
 
 	priv->clk_rate = clk_get_rate(&clk);
 
 	ret = clk_free(&clk);
-	if (ret < 0)
+	if (ret < 0 && ret != -ENOSYS)
 		return ret;
 
 	/* perform reset */
 	ret = reset_get_by_index(dev, 0, &rst_ctl);
-	if (ret < 0)
-		return ret;
-
-	ret = reset_deassert(&rst_ctl);
-	if (ret < 0)
-		return ret;
+	if (ret >= 0) {
+		ret = reset_deassert(&rst_ctl);
+		if (ret < 0)
+			return ret;
+	}
 
 	ret = reset_free(&rst_ctl);
 	if (ret < 0)
 		return ret;
 
 	/* initialize hardware */
-	writel_be(0, priv->regs + SPI_IR_MASK_REG);
+	writel(0, priv->regs + SPI_IR_MASK_REG);
 
 	/* clear pending interrupts */
-	writel_be(SPI_IR_CLEAR_ALL, priv->regs + SPI_IR_STAT_REG);
+	writel(SPI_IR_CLEAR_ALL, priv->regs + SPI_IR_STAT_REG);
 
 	/* enable clk gate */
-	setbits_be32(priv->regs + SPI_CTL_REG, SPI_CTL_CLK_GATE_MASK);
+	setbits_32(priv->regs + SPI_CTL_REG, SPI_CTL_CLK_GATE_MASK);
 
 	/* read default cs polarities */
-	priv->cs_pols = readl_be(priv->regs + SPI_CTL_REG) &
+	priv->cs_pols = readl(priv->regs + SPI_CTL_REG) &
 			SPI_CTL_CS_POL_MASK;
 
 	return 0;

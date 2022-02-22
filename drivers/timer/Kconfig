@@ -181,4 +181,11 @@ config MTK_TIMER
 	  Select this to enable support for the timer found on
 	  MediaTek devices.
 
+config BCM6XXX_TIMER
+	bool "Broadcom 6XXX SoC timer support"
+	depends on TIMER
+	help
+	  Select this to enable peripheral timer support for Broadcom
+	  6XXX SoC devices
+
 endmenu

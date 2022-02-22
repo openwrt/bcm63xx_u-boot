@@ -31,7 +31,7 @@ static int fit_set_hash_value(void *fit, int noffset, uint8_t *value,
 				int value_len)
 {
 	int ret;
-
+	(void)fdt_delprop(fit, noffset, FIT_VALUE_PROP);
 	ret = fdt_setprop(fit, noffset, FIT_VALUE_PROP, value, value_len);
 	if (ret) {
 		printf("Can't set hash '%s' property for '%s' node(%s)\n",

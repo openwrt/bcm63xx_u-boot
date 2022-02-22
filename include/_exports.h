@@ -29,10 +29,16 @@
 	EXPORT_FUNC(udelay, void, udelay, unsigned long)
 	EXPORT_FUNC(get_timer, unsigned long, get_timer, unsigned long)
 	EXPORT_FUNC(vprintf, int, vprintf, const char *, va_list)
+#if !defined(CONFIG_SPL_STANDALONE)
 	EXPORT_FUNC(do_reset, int, do_reset, cmd_tbl_t *,
 		    int , int , char * const [])
 	EXPORT_FUNC(env_get, char  *, env_get, const char*)
 	EXPORT_FUNC(env_set, int, env_set, const char *, const char *)
+#else
+	EXPORT_FUNC(dummy, void, do_reset, void)
+	EXPORT_FUNC(dummy, void, env_get, void)
+	EXPORT_FUNC(dummy, void, env_set, void)
+#endif
 	EXPORT_FUNC(simple_strtoul, unsigned long, simple_strtoul,
 		    const char *, char **, unsigned int)
 	EXPORT_FUNC(strict_strtoul, int, strict_strtoul,

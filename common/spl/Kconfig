@@ -956,6 +956,13 @@ config SPL_ATF
 	  is loaded by SPL (which is considered as BL2 in ATF terminology).
 	  More detail at: https://github.com/ARM-software/arm-trusted-firmware
 
+config TPL_ATF
+	bool "Support ARM Trusted Firmware"
+	help
+	  ATF(ARM Trusted Firmware) is a component for ARM AArch64/32 which
+	  is loaded by TPL (which is considered as BL2 in ATF terminology).
+	  More detail at: https://github.com/ARM-software/arm-trusted-firmware
+
 config SPL_ATF_NO_PLATFORM_PARAM
         bool "Pass no platform parameter"
 	depends on SPL_ATF
@@ -1120,6 +1127,11 @@ config TPL_MPC8XXX_INIT_DDR_SUPPORT
 	  Enable support for DDR-SDRAM on the MPC8XXX family within TPL. See
 	  SPL_MPC8XXX_INIT_DDR_SUPPORT for details.
 
+config TPL_MTD_SUPPORT
+	bool "Support MTD drivers"
+	help
+	  Enable support for MTD (Memory Technology Device) within TPL.
+ 
 config TPL_MMC_SUPPORT
 	bool "Support MMC"
 	depends on MMC
@@ -1206,6 +1218,59 @@ config TPL_YMODEM_SUPPORT
 	  means of transmitting U-Boot over a serial line for using in TPL,
 	  with a checksum to ensure correctness.
 
+config TPL_FIT
+	bool "Support Flattened Image Tree within SPL"
+	depends on SPL
+	select TPL_OF_LIBFDT
+
+config TPL_FIT_PRINT
+	bool "Support FIT printing within TPL"
+	depends on TPL_FIT
+	help
+	  Support printing the content of the fitImage in a verbose manner in TPL.
+
+config TPL_LOAD_FIT
+	bool "Enable TPL loading U-Boot as a FIT (basic fitImage features)"
+	select TPL_FIT
+	help
+	  Normally with the TPL framework a legacy image is generated as part
+	  of the build. This contains U-Boot along with information as to
+	  where it should be loaded. This option instead enables generation
+	  of a FIT (Flat Image Tree) which provides more flexibility. In
+	  particular it can handle selecting from multiple device tree
+	  and passing the correct one to U-Boot.
+
+config TPL_RSA
+	bool "Use RSA Library within TPL"
+
+config TPL_FIT_SIGNATURE
+	bool "Enable signature verification of FIT firmware within TPL"
+	depends on SPL_DM
+	select TPL_FIT
+	select TPL_RSA
+
+config TPL_SHA256_SUPPORT
+	bool "Support SHA256"
+	depends on TPL_FIT
+	select SHA256
+	help
+	  Enable this to support SHA256 in FIT images within TPL. A SHA256
+	  checksum is a 256-bit (32-byte) hash value used to check that the
+	  image contents have not been corrupted. SHA256 is recommended for
+	  use in secure applications since (as at 2016) there is no known
+	  feasible attack that could produce a 'collision' with differing
+	  input data. Use this for the highest security. Note that only the
+	  SHA256 variant is supported: SHA512 and others are not currently
+	  supported in U-Boot.
+
+config TPL_CRYPTO_SUPPORT
+	bool "Support crypto drivers"
+	help
+	  Enable crypto drivers in TPL. These drivers can be used to
+	  accelerate secure boot processing in secure applications. Enable
+	  this option to build the drivers in drivers/crypto as part of an
+	  SPL build.
+
 endif # TPL
 
 config SPL_AT91_MCK_BYPASS
@@ -1219,6 +1284,15 @@ config SPL_AT91_MCK_BYPASS
 	  The external source has to provide a stable clock on the XIN pin.
 	  If this option is disabled, the SoC expects a crystal oscillator
 	  that needs driving on both XIN and XOUT lines.
+
+config SPL_STANDALONE
+	bool "Support standalone application in SPL"
+	default n
+	help
+	  This option enables standalone application build for SPL.
+	  Unlike u_boot proper loading application from the shell manually, SPL
+	  need to load the app binary from somewhere during the SPL execution,
+	  typically in the SPL board init routine.
 
 endif # SPL
 endmenu

@@ -17,6 +17,7 @@ obj-$(CONFIG_USB_SL811HS) += sl811-hcd.o
 obj-$(CONFIG_USB_OHCI_EP93XX) += ohci-ep93xx.o
 obj-$(CONFIG_USB_OHCI_LPC32XX) += ohci-lpc32xx.o
 obj-$(CONFIG_USB_OHCI_GENERIC) += ohci-generic.o
+obj-$(CONFIG_USB_OHCI_BCMBCA) += ohci-bcmbca.o
 
 # echi
 obj-$(CONFIG_USB_EHCI_HCD) += ehci-hcd.o
@@ -41,6 +42,7 @@ obj-$(CONFIG_USB_EHCI_VCT) += ehci-vct.o
 obj-$(CONFIG_USB_EHCI_VF) += ehci-vf.o
 obj-$(CONFIG_USB_EHCI_RMOBILE) += ehci-rmobile.o
 obj-$(CONFIG_USB_EHCI_ZYNQ) += ehci-zynq.o
+obj-$(CONFIG_USB_EHCI_BCMBCA) += ehci-bcmbca.o
 
 # xhci
 obj-$(CONFIG_USB_XHCI_HCD) += xhci.o xhci-mem.o xhci-ring.o

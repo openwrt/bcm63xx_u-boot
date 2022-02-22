@@ -17,7 +17,7 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-#define MAX_DELAY_STOP_STR 32
+#define MAX_DELAY_STOP_STR 64
 
 #ifndef DEBUG_BOOTKEYS
 #define DEBUG_BOOTKEYS 0
@@ -37,7 +37,7 @@ static int stored_bootdelay;
  *
  * https://crackstation.net/hashing-security.htm
  */
-static int slow_equals(u8 *a, u8 *b, int len)
+static int slow_equals(u8 * a, u8 * b, int len)
 {
 	int diff = 0;
 	int i;
@@ -54,6 +54,7 @@ static int passwd_abort(uint64_t etime)
 	u8 sha_env[SHA256_SUM_LEN];
 	u8 sha[SHA256_SUM_LEN];
 	char presskey[MAX_DELAY_STOP_STR];
+	char *c;
 	const char *algo_name = "sha256";
 	u_int presskey_len = 0;
 	int abort = 0;
@@ -63,6 +64,13 @@ static int passwd_abort(uint64_t etime)
 	if (sha_env_str == NULL)
 		sha_env_str = CONFIG_AUTOBOOT_STOP_STR_SHA256;
 
+	c = strstr(sha_env_str, ":");
+	if (c && (c - sha_env_str < MAX_DELAY_STOP_STR)) {
+		/* preload presskey with salt */
+		memcpy(presskey, sha_env_str, c - sha_env_str);
+		presskey_len = c - sha_env_str;
+		sha_env_str = c + 1;
+	}
 	/*
 	 * Generate the binary value from the environment hash value
 	 * so that we can compare this value with the computed hash
@@ -72,6 +80,9 @@ static int passwd_abort(uint64_t etime)
 	if (ret) {
 		printf("Hash %s not supported!\n", algo_name);
 		return 0;
+	}
+	while (tstc()) {
+		getc();
 	}
 
 	/*
@@ -94,6 +105,8 @@ static int passwd_abort(uint64_t etime)
 			/* And check if sha matches saved value in env */
 			if (slow_equals(sha, sha_env, SHA256_SUM_LEN))
 				abort = 1;
+			/* add 1 second per character typed */
+			etime += (uint64_t) (1) * get_tbclk();
 		}
 	} while (!abort && get_ticks() <= etime);
 
@@ -107,34 +120,33 @@ static int passwd_abort(uint64_t etime)
 		char *str;
 		u_int len;
 		int retry;
-	}
-	delaykey[] = {
-		{ .str = env_get("bootdelaykey"),  .retry = 1 },
-		{ .str = env_get("bootstopkey"),   .retry = 0 },
-	};
+	} delaykey[] = {
+		{
+		.str = env_get("bootdelaykey"),.retry = 1}, {
+	.str = env_get("bootstopkey"),.retry = 0},};
 
 	char presskey[MAX_DELAY_STOP_STR];
 	u_int presskey_len = 0;
 	u_int presskey_max = 0;
 	u_int i;
 
-#  ifdef CONFIG_AUTOBOOT_DELAY_STR
+#ifdef CONFIG_AUTOBOOT_DELAY_STR
 	if (delaykey[0].str == NULL)
 		delaykey[0].str = CONFIG_AUTOBOOT_DELAY_STR;
-#  endif
-#  ifdef CONFIG_AUTOBOOT_STOP_STR
+#endif
+#ifdef CONFIG_AUTOBOOT_STOP_STR
 	if (delaykey[1].str == NULL)
 		delaykey[1].str = CONFIG_AUTOBOOT_STOP_STR;
-#  endif
+#endif
 
 	for (i = 0; i < sizeof(delaykey) / sizeof(delaykey[0]); i++) {
 		delaykey[i].len = delaykey[i].str == NULL ?
-				    0 : strlen(delaykey[i].str);
+		    0 : strlen(delaykey[i].str);
 		delaykey[i].len = delaykey[i].len > MAX_DELAY_STOP_STR ?
-				    MAX_DELAY_STOP_STR : delaykey[i].len;
+		    MAX_DELAY_STOP_STR : delaykey[i].len;
 
 		presskey_max = presskey_max > delaykey[i].len ?
-				    presskey_max : delaykey[i].len;
+		    presskey_max : delaykey[i].len;
 
 		debug_bootkeys("%s key:<%s>\n",
 			       delaykey[i].retry ? "delay" : "stop",
@@ -159,12 +171,12 @@ static int passwd_abort(uint64_t etime)
 		for (i = 0; i < sizeof(delaykey) / sizeof(delaykey[0]); i++) {
 			if (delaykey[i].len > 0 &&
 			    presskey_len >= delaykey[i].len &&
-				memcmp(presskey + presskey_len -
-					delaykey[i].len, delaykey[i].str,
-					delaykey[i].len) == 0) {
-					debug_bootkeys("got %skey\n",
-						delaykey[i].retry ? "delay" :
-						"stop");
+			    memcmp(presskey + presskey_len -
+				   delaykey[i].len, delaykey[i].str,
+				   delaykey[i].len) == 0) {
+				debug_bootkeys("got %skey\n",
+					       delaykey[i].retry ? "delay" :
+					       "stop");
 
 				/* don't retry auto boot */
 				if (!delaykey[i].retry)
@@ -187,13 +199,13 @@ static int __abortboot(int bootdelay)
 	int abort;
 	uint64_t etime = endtick(bootdelay);
 
-#  ifdef CONFIG_AUTOBOOT_PROMPT
+#ifdef CONFIG_AUTOBOOT_PROMPT
 	/*
 	 * CONFIG_AUTOBOOT_PROMPT includes the %d for all boards.
 	 * To print the bootdelay value upon bootup.
 	 */
 	printf(CONFIG_AUTOBOOT_PROMPT, bootdelay);
-#  endif
+#endif
 
 	abort = passwd_abort(etime);
 	if (!abort)
@@ -202,7 +214,7 @@ static int __abortboot(int bootdelay)
 	return abort;
 }
 
-# else	/* !defined(CONFIG_AUTOBOOT_KEYED) */
+#else /* !defined(CONFIG_AUTOBOOT_KEYED) */
 
 #ifdef CONFIG_MENUKEY
 static int menukey;
@@ -222,10 +234,10 @@ static int __abortboot(int bootdelay)
 	/*
 	 * Check if key already pressed
 	 */
-	if (tstc()) {	/* we got a key press	*/
-		(void) getc();  /* consume input	*/
+	if (tstc()) {		/* we got a key press   */
+		(void)getc();	/* consume input        */
 		puts("\b\b\b 0");
-		abort = 1;	/* don't auto boot	*/
+		abort = 1;	/* don't auto boot      */
 	}
 
 	while ((bootdelay > 0) && (!abort)) {
@@ -233,14 +245,14 @@ static int __abortboot(int bootdelay)
 		/* delay 1000 ms */
 		ts = get_timer(0);
 		do {
-			if (tstc()) {	/* we got a key press	*/
-				abort  = 1;	/* don't auto boot	*/
-				bootdelay = 0;	/* no more delay	*/
-# ifdef CONFIG_MENUKEY
+			if (tstc()) {	/* we got a key press   */
+				abort = 1;	/* don't auto boot      */
+				bootdelay = 0;	/* no more delay        */
+#ifdef CONFIG_MENUKEY
 				menukey = getc();
-# else
-				(void) getc();  /* consume input	*/
-# endif
+#else
+				(void)getc();	/* consume input        */
+#endif
 				break;
 			}
 			udelay(10000);
@@ -253,7 +265,7 @@ static int __abortboot(int bootdelay)
 
 	return abort;
 }
-# endif	/* CONFIG_AUTOBOOT_KEYED */
+#endif /* CONFIG_AUTOBOOT_KEYED */
 
 static int abortboot(int bootdelay)
 {
@@ -298,8 +310,7 @@ const char *bootdelay_process(void)
 	bootdelay = s ? (int)simple_strtol(s, NULL, 10) : CONFIG_BOOTDELAY;
 
 #ifdef CONFIG_OF_CONTROL
-	bootdelay = fdtdec_get_config_int(gd->fdt_blob, "bootdelay",
-			bootdelay);
+	bootdelay = fdtdec_get_config_int(gd->fdt_blob, "bootdelay", bootdelay);
 #endif
 
 	debug("### main_loop entered: bootdelay=%d\n\n", bootdelay);
@@ -339,8 +350,16 @@ void autoboot_command(const char *s)
 #if defined(CONFIG_AUTOBOOT_KEYED) && !defined(CONFIG_AUTOBOOT_KEYED_CTRLC)
 		disable_ctrlc(prev);	/* restore Control C checking */
 #endif
+#if defined(CONFIG_AUTOBOOT_KEYED)
+		printf("bootcommand failed .. last chance\n");
+		if (!abortboot(20)) {
+			printf("RESET THE BOARD\n");
+			while (1) {
+			};
+		}
+		printf("drop to cli ok\n");
+#endif /* CONFIG_AUTOBOOT_KEYED */
 	}
-
 #ifdef CONFIG_MENUKEY
 	if (menukey == CONFIG_MENUKEY) {
 		s = env_get("menucmd");

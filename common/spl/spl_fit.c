@@ -24,6 +24,11 @@ __weak ulong board_spl_fit_size_align(ulong size)
 	return size;
 }
 
+__weak void board_spl_fit_pre_load(struct spl_image_info * image_info, 
+	struct spl_load_info *load_info, void * fit, ulong start_sector, ulong sector_count)
+{
+}
+
 /**
  * spl_fit_get_image_name(): By using the matching configuration subnode,
  * retrieve the name of an image, specified by a property name and an index
@@ -239,7 +244,7 @@ static int spl_load_fit_image(struct spl_load_info *info, ulong sector,
 		src = (void *)data;
 	}
 
-#ifdef CONFIG_SPL_FIT_SIGNATURE
+#if CONFIG_IS_ENABLED(FIT_SIGNATURE)
 	printf("## Checking hash(es) for Image %s ... ",
 	       fit_get_name(fit, node, NULL));
 	if (!fit_image_verify_with_data(fit, node,
@@ -388,6 +393,9 @@ int spl_load_simple_fit(struct spl_image_info *spl_image,
 
 	if (count == 0)
 		return -EIO;
+
+	/* Do any preprocessing */
+	board_spl_fit_pre_load(spl_image, info, fit, sector, sectors);
 
 	/* find the node holding the images information */
 	images = fdt_path_offset(fit, FIT_IMAGES_PATH);

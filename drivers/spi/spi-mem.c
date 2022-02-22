@@ -201,7 +201,11 @@ int spi_mem_exec_op(struct spi_slave *slave, const struct spi_mem_op *op)
 	unsigned int pos = 0;
 	const u8 *tx_buf = NULL;
 	u8 *rx_buf = NULL;
+#if CONFIG_IS_ENABLED(SYS_MALLOC_SIMPLE)
+	u8 op_buf[32];
+#else	
 	u8 *op_buf;
+#endif
 	int op_len;
 	u32 flag;
 	int ret;
@@ -338,8 +342,18 @@ int spi_mem_exec_op(struct spi_slave *slave, const struct spi_mem_op *op)
 	}
 
 	op_len = sizeof(op->cmd.opcode) + op->addr.nbytes + op->dummy.nbytes;
+#if CONFIG_IS_ENABLED(SYS_MALLOC_SIMPLE)
+	/* When simple malloc is enabled for SPL, free is a NOP. Use local 
+	 * stack to avoid running out heap memory. All spi mem operations
+	 * has small addr and dummy bytes. 32 bytes buf is good enough
+	 */
+	if (op_len > 32 )
+ 		return -ENOMEM;
+	else
+		memset(op_buf, 0x0, 32);
+#else	
 	op_buf = calloc(1, op_len);
-
+#endif
 	op_buf[pos++] = op->cmd.opcode;
 
 	if (op->addr.nbytes) {
@@ -382,7 +396,9 @@ int spi_mem_exec_op(struct spi_slave *slave, const struct spi_mem_op *op)
 		debug("%02x ", tx_buf ? tx_buf[i] : rx_buf[i]);
 	debug("[ret %d]\n", ret);
 
+#if !CONFIG_IS_ENABLED(SYS_MALLOC_SIMPLE)	
 	free(op_buf);
+#endif
 
 	if (ret < 0)
 		return ret;

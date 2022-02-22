@@ -29,6 +29,7 @@
 #include <linux/mtd/mtd.h>
 #include <nand.h>
 #include <jffs2/jffs2.h>
+#include <linux/mtd/spinand.h>
 
 typedef struct erase_info	erase_info_t;
 typedef struct mtd_info		mtd_info_t;
@@ -59,6 +60,7 @@ int nand_erase_opts(struct mtd_info *mtd,
 	const char *mtd_device = mtd->name;
 	struct mtd_oob_ops oob_opts;
 	struct nand_chip *chip = mtd_to_nand(mtd);
+	bool spi_nand = !strncmp(mtd->dev->name, "spi-nand", 8);
 
 	if ((opts->offset & (mtd->erasesize - 1)) != 0) {
 		printf("Attempt to erase non block-aligned data\n");
@@ -84,15 +86,43 @@ int nand_erase_opts(struct mtd_info *mtd,
 	 */
 	if (opts->scrub) {
 		erase.scrub = opts->scrub;
-		/*
-		 * We don't need the bad block table anymore...
-		 * after scrub, there are no bad blocks left!
-		 */
-		if (chip->bbt) {
-			kfree(chip->bbt);
+
+		if (spi_nand)
+		{
+			struct spinand_device *spinand = mtd_to_spinand(mtd);
+			struct nand_device *nand = spinand_to_nand(spinand);
+
+			if (nanddev_bbt_is_initialized(nand))
+			{ // set unknown status in BBT of scrubbed blocks so that they are re-scanned, clearing BBT does not allow it to be rescanned and saved to memory
+				unsigned int entry;
+				struct nand_pos pos;
+				loff_t offs;
+
+				for (offs = erase.addr, erased_length = 0; erased_length < erase_length; offs += mtd->erasesize, erased_length++)
+				{
+					nanddev_offs_to_pos(nand, offs, &pos);
+					entry = nanddev_bbt_pos_to_entry(nand, &pos);
+					nanddev_bbt_set_block_status(nand, entry, NAND_BBT_BLOCK_STATUS_UNKNOWN);
+				}
+			}
 		}
-		chip->bbt = NULL;
-		chip->options &= ~NAND_BBT_SCANNED;
+		else
+		{
+			printf("Please note: the FLASH blocks containing ONLY the BBT\n");
+			printf("should be erased so that ALL the FLASH blocks will be\n");
+			printf("automatically rescanned, rebuilding the BBT to match\n");
+			printf("the status of these newly scrubbed blocks\n");
+			/*
+			 * We don't need the bad block table anymore...
+			 * after scrub, there are no bad blocks left!
+			 */
+			if (chip->bbt) {
+				kfree(chip->bbt);
+			}
+
+			chip->bbt = NULL;
+			chip->options &= ~NAND_BBT_SCANNED;
+		}
 	}
 
 	for (erased_length = 0;
@@ -137,7 +167,7 @@ int nand_erase_opts(struct mtd_info *mtd,
 		}
 
 		/* format for JFFS2 ? */
-		if (opts->jffs2 && chip->ecc.layout->oobavail >= 8) {
+		if (!spi_nand && opts->jffs2 && chip->ecc.layout->oobavail >= 8) {
 			struct mtd_oob_ops ops;
 			ops.ooblen = 8;
 			ops.datbuf = NULL;

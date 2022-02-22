@@ -65,7 +65,7 @@ config BCM_SF2_ETH_DEFAULT_PORT
 
 config BCM_SF2_ETH_GMAC
 	bool "Broadcom SF2 (Starfighter2) GMAC Ethernet support"
-	depends on BCM_SF2_ETH
+	depends on DM_ETH
 	help
 	  This flag enables the ethernet support for Broadcom platforms with
 	  GMAC such as Cygnus. This driver is based on the framework provided
@@ -89,6 +89,8 @@ config BCM6368_ETH
 	select MII
 	help
 	  This driver supports the BCM6368 Ethernet MAC.
+
+source "drivers/net/bcmbca/Kconfig"
 
 config DWC_ETH_QOS
 	bool "Synopsys DWC Ethernet QOS device support"

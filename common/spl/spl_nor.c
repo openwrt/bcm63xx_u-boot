@@ -38,7 +38,7 @@ static int spl_nor_load_image(struct spl_image_info *spl_image,
 		 * location in SDRAM
 		 */
 		header = (const struct image_header *)CONFIG_SYS_OS_BASE;
-#ifdef CONFIG_SPL_LOAD_FIT
+#if CONFIG_IS_ENABLED(LOAD_FIT)
 		if (image_get_magic(header) == FDT_MAGIC) {
 			debug("Found FIT\n");
 			load.bl_len = 1;

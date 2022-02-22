@@ -69,6 +69,13 @@ config SPL_LED_GPIO
 	  This option is an SPL-variant of the LED_GPIO option.
 	  See the help of LED_GPIO for details.
 
+config BCM_BCA_LED
+	bool "LED Support for BCMBCA devices"
+	depends on LED && ARCH_BCMBCA
+	help
+	  This option enables support for LEDs connected to the all BCMBCA based devices
+	  HW has blinking capabilities and up to 32 LEDs can be controlled.
+
 config LED_STATUS
 	bool "Enable status LED API"
 	help

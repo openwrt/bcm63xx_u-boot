@@ -344,6 +344,8 @@ struct vlan_ethernet_hdr {
 #define PROT_IPV6	0x86dd		/* IPv6 over bluebook		*/
 #define PROT_PPP_SES	0x8864		/* PPPoE session messages	*/
 
+#define PROT_NMRP       0x0912
+
 #define IPPROTO_ICMP	 1	/* Internet Control Message Protocol	*/
 #define IPPROTO_UDP	17	/* User Datagram Protocol		*/
 
@@ -528,9 +530,43 @@ extern ushort		net_native_vlan;	/* Our Native VLAN */
 
 extern int		net_restart_wrap;	/* Tried all network devices */
 
+#ifdef FIRMWARE_RECOVER_FROM_TFTP_SERVER
+extern uchar NetOurTftpIP[4];
+extern int NetRunTftpServer;
+extern uchar TftpClientEther[6];    /* TFTP Client enet address      */
+extern struct in_addr TftpClientIP;       /* Client IP addr (0 = unknown)  */
+extern void StartTftpServerToRecoveFirmware(void);
+#if defined(CONFIG_SYS_NMRP) && defined(CONFIG_SYS_SINGLE_FIRMWARE)
+extern void UpgradeFirmwareFromNmrpServer(void);
+extern void CheckNmrpAliveTimerExpire(int send_nmrp_alive);
+#endif
+extern void ResetTftpServer(void);
+#endif
+
+#define IP_ADDR_LEN 4
+typedef struct{
+        ushort type;
+
+        ushort len;
+        uchar value;
+}NMRP_OPT;
+typedef struct {
+        ushort reserved;
+        uchar code;
+        uchar id;
+        ushort length;
+        NMRP_OPT opt;
+}nmrp_t;
+extern int NmrpState;
+extern struct in_addr NmrpClientIP;
+extern uchar NmrpClientEther[6];
+extern uchar NmrpServerEther[6];
+#define NMRP_HDR_LEN (sizeof(nmrp_t) - sizeof(NMRP_OPT))
+#define MIN_ETHER_NMRP_LEN (sizeof(struct ethernet_hdr) + NMRP_HDR_LEN)
+
 enum proto_t {
 	BOOTP, RARP, ARP, TFTPGET, DHCP, PING, DNS, NFS, CDP, NETCONS, SNTP,
-	TFTPSRV, TFTPPUT, LINKLOCAL, FASTBOOT, WOL
+	TFTPSRV, TFTPPUT, LINKLOCAL, FASTBOOT, WOL, NMRP
 };
 
 extern char	net_boot_file_name[1024];/* Boot File name */
@@ -873,5 +909,7 @@ unsigned int random_port(void);
 int update_tftp(ulong addr, char *interface, char *devstring);
 
 /**********************************************************************/
+
+extern int (*ip_tap)(uchar *in_packet, int len, struct ip_udp_hdr *ip);
 
 #endif /* __NET_H__ */

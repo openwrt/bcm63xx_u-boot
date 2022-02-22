@@ -52,7 +52,7 @@ static int spl_nand_load_element(struct spl_image_info *spl_image,
 	if (err)
 		return err;
 
-	if (IS_ENABLED(CONFIG_SPL_LOAD_FIT) &&
+	if (CONFIG_IS_ENABLED(LOAD_FIT) &&
 	    image_get_magic(header) == FDT_MAGIC) {
 		struct spl_load_info load;
 

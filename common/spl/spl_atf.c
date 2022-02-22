@@ -79,10 +79,17 @@ static struct bl31_params *bl2_plat_get_bl31_params(uintptr_t bl33_entry)
 	return bl2_to_bl31_params;
 }
 
+#if __LINUX_ARM_ARCH__==8
 static inline void raw_write_daif(unsigned int daif)
 {
 	__asm__ __volatile__("msr DAIF, %0\n\t" : : "r" (daif) : "memory");
 }
+#else
+static inline void raw_write_daif(unsigned int daif)
+{
+
+}
+#endif
 
 typedef void (*atf_entry_t)(struct bl31_params *params, void *plat_params);
 

@@ -33,6 +33,11 @@ int check_cache_range(unsigned long start, unsigned long stop);
 void l2_cache_enable(void);
 void l2_cache_disable(void);
 void set_section_dcache(int section, enum dcache_option option);
+#ifdef CONFIG_ARMV7_LPAE
+void set_section_attr(int section, u64 virt, u64 attr);
+#else
+void set_section_attr(int section, u32 virt, u32 attr);
+#endif
 
 void arm_init_before_mmu(void);
 void arm_init_domains(void);

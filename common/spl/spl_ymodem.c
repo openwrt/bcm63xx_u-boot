@@ -107,7 +107,7 @@ static int spl_ymodem_load_image(struct spl_image_info *spl_image,
 		ret = spl_parse_image_header(spl_image, ih);
 		if (ret)
 			return ret;
-	} else if (IS_ENABLED(CONFIG_SPL_LOAD_FIT) &&
+	} else if (CONFIG_IS_ENABLED(LOAD_FIT) &&
 	    image_get_magic((struct image_header *)buf) == FDT_MAGIC) {
 		struct spl_load_info load;
 		struct ymodem_fit_info info;

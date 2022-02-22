@@ -21,44 +21,12 @@
 
 	memory {
 		device_type = "memory";
-		reg = <0x0 0x0 0x0 0x40000000>;
+		reg = <0x0 0x0 0x0 0x08000000>;
 	};
 };
 
 &uart0 {
 	u-boot,dm-pre-reloc;
-	status = "okay";
-};
-
-&gpio0 {
-	status = "okay";
-};
-
-&gpio1 {
-	status = "okay";
-};
-
-&gpio2 {
-	status = "okay";
-};
-
-&gpio3 {
-	status = "okay";
-};
-
-&gpio4 {
-	status = "okay";
-};
-
-&gpio5 {
-	status = "okay";
-};
-
-&gpio6 {
-	status = "okay";
-};
-
-&gpio7 {
 	status = "okay";
 };
 
@@ -71,9 +39,18 @@
 	nandcs@0 {
 		compatible = "brcm,nandcs";
 		reg = <0>;
-		nand-ecc-strength = <4>;
-		nand-ecc-step-size = <512>;
-		brcm,nand-oob-sector-size = <16>;
+	};
+};
+
+&hsspi {
+	status = "okay";
+	spi-nand {
+		compatible = "spi-nand";
+		reg = <0>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		u-boot,dm-pre-reloc;				
+		spi-max-frequency = <100000000>;
 	};
 };
 
@@ -123,5 +100,36 @@
 	led@29 {
 		reg = <29>;
 		label = "green:aggregate_link";
+	};
+};
+
+&usb0 {
+	status = "okay";
+	pinctrl-0 = <&usb0a_pwrflt_pins &usb0a_pwron_pins>;
+	pinctrl-names="default";
+};
+
+&usb1 {
+	status = "okay";
+	pinctrl-0 = <&usb1a_pwrflt_pins &usb1a_pwron_pins>;
+	pinctrl-names="default";
+};
+
+&switchsf2 {
+	status = "okay";
+	phy_base = <0x8>;
+	ports {
+		port0@0 {
+			phy-handle = <&gphy8>;
+		};
+		port1@1 {
+			phy-handle = <&gphy9>;
+		};
+		port2@2 {
+			phy-handle = <&gphya>;
+		};
+		port3@3 {
+			phy-handle = <&gphyb>;
+		};
 	};
 };

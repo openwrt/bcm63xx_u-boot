@@ -64,7 +64,7 @@ struct fdt_region;
 #  ifdef CONFIG_SPL_MD5_SUPPORT
 #   define IMAGE_ENABLE_MD5	1
 #  endif
-#  ifdef CONFIG_SPL_SHA1_SUPPORT
+#  if CONFIG_IS_ENABLED(SHA1_SUPPORT)
 #   define IMAGE_ENABLE_SHA1	1
 #  endif
 # else
