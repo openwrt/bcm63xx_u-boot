@@ -109,6 +109,34 @@ static void bcmbca_set_ldo_trim(void)
 }
 #endif
 
+#define LED_REG_IN_OUT      0xff800500
+#define LED_TEST_MASK       0x08000000
+#define LED_AL_AH_REG       0xff800528
+void board_test_led_spl(int status)
+{
+    volatile uint32_t *cled_al_ah_reg = (void *)(LED_AL_AH_REG);
+    volatile uint32_t *cled_in_out_reg = (void *)(LED_REG_IN_OUT);
+    uint32_t val32;
+
+    val32 = *cled_in_out_reg;
+    val32 |= LED_TEST_MASK;
+    *cled_in_out_reg = val32;
+
+    val32 = *cled_al_ah_reg;
+    if( status == 0 )
+        val32 &= ~LED_TEST_MASK;
+    else
+        val32 |= LED_TEST_MASK;
+    *cled_al_ah_reg = val32;
+}
+
+void bootup_spl_turn_on_power_led(void)
+{
+    //power up, turn on power led
+    printf("===== SPL - POWER ON TURN ON POWER LED =====\n");
+    board_test_led_spl(0);
+}
+
 void board_init_f(ulong dummy)
 {
 #if defined(CONFIG_ARCH_CPU_INIT)
@@ -122,6 +150,11 @@ void board_init_f(ulong dummy)
 
 	/* UART clocks enabled and gd valid - init serial console */
 	preloader_console_init();
+
+	/* Foxconn add start */
+	bootup_spl_turn_on_power_led();
+	/* Foxconn add end */
+
 	printf("Strap register: 0x%x\n", MISC->miscStrapBus);
 	if (bcm_otp_init()) {
 		hang();

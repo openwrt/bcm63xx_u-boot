@@ -87,6 +87,15 @@ void bootup_turn_on_power_led(void)
 	board_test_led(0);
 }
 
+void bootup_enable_dhd_offload(void)
+{
+	//power up, turn on power led
+	printf("===== Enable DHD tx offload =====\n");
+	env_set("dhd0", "11");
+	env_set("dhd1", "11");
+	env_set("dhd2", "11");
+}
+
 /* We come here after U-Boot is initialised and ready to process commands */
 void main_loop(void)
 {
@@ -100,6 +109,7 @@ void main_loop(void)
 	cli_init();
 	/*Foxconn add start*/
 	bootup_turn_on_power_led();
+	bootup_enable_dhd_offload();
 	/*Foxconn add end*/
 	run_preboot_environment_command();
 
