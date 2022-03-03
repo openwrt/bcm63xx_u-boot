@@ -80,6 +80,7 @@ void check_restore_default(void)
 	  return;
 }
 
+#if 0
 void bootup_turn_on_power_led(void)
 {
 	//power up, turn on power led
@@ -95,6 +96,7 @@ void bootup_enable_dhd_offload(void)
 	env_set("dhd1", "11");
 	env_set("dhd2", "11");
 }
+#endif
 
 /* We come here after U-Boot is initialised and ready to process commands */
 void main_loop(void)
@@ -107,10 +109,12 @@ void main_loop(void)
 		env_set("ver", version_string);  /* set version variable */
 
 	cli_init();
+#if 0
 	/*Foxconn add start*/
 	bootup_turn_on_power_led();
 	bootup_enable_dhd_offload();
 	/*Foxconn add end*/
+#endif
 	run_preboot_environment_command();
 
   check_restore_default();
