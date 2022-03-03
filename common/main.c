@@ -40,6 +40,7 @@ static void run_preboot_environment_command(void)
 #endif /* CONFIG_PREBOOT */
 }
 
+#if 0
 int g_restore_default;
 
 void check_restore_default(void)
@@ -79,6 +80,7 @@ void check_restore_default(void)
 	  }
 	  return;
 }
+#endif
 
 #if 0
 void bootup_turn_on_power_led(void)
@@ -117,7 +119,9 @@ void main_loop(void)
 #endif
 	run_preboot_environment_command();
 
+#if 0
   check_restore_default();
+#endif
   
 #ifdef CONFIG_SYS_NMRP
     StartNmrpClient();
