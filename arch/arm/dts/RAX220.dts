@@ -1,0 +1,50 @@
+// SPDX-License-Identifier: GPL-2.0+
+
+/dts-v1/;
+
+#include "bcm4908.dtsi"
+
+/ {
+	model = "RAX220";
+	compatible = "brcm,brcm-v8A";
+
+	aliases {
+		serial0 = &uart0;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	memory {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0x8000000>;
+	};
+};
+
+&switchsf2 {
+	status = "okay";
+
+	ports {
+		port0@0 {
+			phy-handle = <&gphy8>;
+		};
+
+		port1@1 {
+			phy-handle = <&gphy9>;
+		};
+
+		port2@2 {
+			phy-handle = <&gphya>;
+		};
+
+		port3@3 {
+			phy-handle = <&gphyb>;
+		};
+	};
+};
+
+&nand {
+	write-protect = <0>;
+	status = "okay";
+};
