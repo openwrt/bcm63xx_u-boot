@@ -1,0 +1,117 @@
+// SPDX-License-Identifier: GPL-2.0+
+
+/dts-v1/;
+
+#include "bcm4912.dtsi"
+
+/ {
+	model = "GTAX6000";
+	compatible = "brcm,brcm-v8A";
+
+	aliases {
+		serial0 = &uart0;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	memory {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0x8000000>;
+	};
+};
+
+&mdio {
+	phy1: 1 {
+		status = "okay";
+	};
+
+	phy2: 2 {
+		status = "okay";
+	};
+
+	phy3: 3 {
+		status = "okay";
+	};
+
+	phy4: 4 {
+		status = "okay";
+	};
+
+	phy6: 6 {
+		compatible = "brcm,bcaphy";
+		phy-type = "10GAE";
+		reg = <0x06>;
+		serdes-core = <0x00>;
+		serdes-lane = <0x00>;
+		status = "okay";
+		phy-handle = <0x0e>;
+		phandle = <0x17>;
+	};
+
+	phy7: 7 {
+		compatible = "brcm,bcaphy";
+		phy-type = "10GAE";
+		reg = <0x07>;
+		serdes-core = <0x01>;
+		serdes-lane = <0x00>;
+		status = "okay";
+		phy-handle = <0x0f>;
+		phandle = <0x19>;
+	};
+};
+
+&switch0 {
+	ports {
+		port0@0 {
+			phy-handle = <&phy1>;
+			status = "okay";
+			label = "eth1";
+		};
+
+		port1@1 {
+			phy-handle = <&phy2>;
+			status = "okay";
+			label = "eth2";
+		};
+
+		port2@2 {
+			phy-handle = <&phy3>;
+			status = "okay";
+			label = "eth3";
+		};
+
+		port3@3 {
+			phy-handle = <&phy4>;
+			status = "okay";
+			label = "eth4";
+		};
+
+		port5@5 {
+			reg = <0x05>;
+			mac-type = "XPORT";
+			xport-intf = <0x01>;
+			phy-handle = <&phy6>;
+			phy-mode = "serdes";
+			status = "okay";
+			network-leds = <0x18>;
+			label = "eth0";
+		};
+
+		port6@6 {
+			reg = <0x06>;
+			mac-type = "XPORT";
+			xport-intf = <0x03>;
+			phy-handle = <&phy7>;
+			phy-mode = "serdes";
+			status = "okay";
+			label = "eth5";
+		};
+	};
+};
+
+&nand {
+	write-protect = <1>;
+	status = "okay";
+};

@@ -781,7 +781,8 @@ dtb-$(CONFIG_BCM4908) += \
 	RAX220.dtb
 
 dtb-$(CONFIG_BCM4912) += \
-	bcm94912.dtb
+	bcm94912.dtb \
+	GTAX6000.dtb
 
 dtb-$(CONFIG_BCM63138) += \
 	bcm963138.dtb
