@@ -389,6 +389,11 @@ static int Nmrp_Parse_Opts(uchar *pkt, NMRP_PARSED_MSG *nmrp_parsed)
 	nmrp_opt = &nmrphdr->opt;
 	while (remain_len > 0){
 		memcpy(&nmrp_parsed->options[opt_index], nmrp_opt, ntohs(nmrp_opt->len));
+        if(ntohs(nmrp_opt->len) <= 0)
+        {
+           printf("NMRP opt error\n");
+           return -1;
+        }
 		remain_len -= ntohs(nmrp_opt->len);
 		nmrp_opt = ((uchar *)nmrp_opt) + ntohs(nmrp_opt->len);
 		opt_index++;
